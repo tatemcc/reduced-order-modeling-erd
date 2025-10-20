@@ -44,62 +44,55 @@ class ClosureParams:
 params = ClosureParams()
 
 
-def nu_c_Hz(p_Torr: float, Tgas_K: float) -> float:
-    """
-    Electron-neutral collision frequency [Hz].
-    νc ≈ ν0 * p_Pa / Tgas_K
-    """
-    p_Pa = p_Torr * 133.322368
-    return params.nu0_HzPa * p_Pa / max(Tgas_K, 1.0)
+def nu_c_Hz(p_Torr: float, Tgas_K: float):
+    """Vectorized collision frequency [Hz]."""
+    import numpy as _np
+    p_Pa = p_Torr * 133.322368  # scalar
+    T = max(Tgas_K, 1.0)        # scalar
+    return params.nu0_HzPa * p_Pa / T
 
+def sigma_Spm(ne_m3, Te_eV, p_Torr: float, Tgas_K: float):
+    """Vectorized Ohmic conductivity σ = e^2 ne / (me νc)."""
+    import numpy as _np
+    ne = _np.asarray(ne_m3, dtype=float)
+    nu = nu_c_Hz(p_Torr, Tgas_K)  # scalar
+    return (e * e * _np.maximum(ne, 0.0)) / (me * max(nu, 1.0))
 
-def sigma_Spm(ne_m3: float, Te_eV: float, p_Torr: float, Tgas_K: float) -> float:
-    """
-    Ohmic conductivity [S/m]: σ ≈ e^2 ne / (me νc).
-    Ignores temperature dependence of νc beyond Tgas; adequate for ERD prototype.
-    """
-    nu = nu_c_Hz(p_Torr, Tgas_K)
-    return (e * e * max(ne_m3, 0.0)) / (me * max(nu, 1.0))
+def sigma_uniform_equiv(ne_avg, Te_avg):
+    """Uniform effective σ̄ from average (ne,Te). Accepts scalars/arrays; uses means."""
+    import numpy as _np
+    ne = float(_np.mean(ne_avg))
+    Te = float(_np.mean(Te_avg))
+    return sigma_Spm(ne, Te, GAS.p_Torr, GAS.Tgas_K)
 
+def Da_m2ps(Te_eV, p_Torr: float):
+    """Vectorized ambipolar diffusion Da ~ Te / p."""
+    import numpy as _np
+    Te = _np.asarray(Te_eV, dtype=float)
+    return params.Da0_m2ps_per_eV_over_Torr * _np.maximum(Te, 0.01) / max(p_Torr, 0.1)
 
-def sigma_uniform_equiv(ne_avg: float, Te_avg: float) -> float:
-    """
-    Convenience wrapper for a uniform effective σ̄ based on average (ne, Te)
-    under current gas conditions from config.
-    """
-    return sigma_Spm(ne_avg, Te_avg, GAS.p_Torr, GAS.Tgas_K)
+def S_ion_Hz(E_eff_Vpm, p_Torr: float):
+    """Vectorized Townsend-like ionization coefficient (per ne)."""
+    import numpy as _np
+    E = _np.asarray(E_eff_Vpm, dtype=float)
+    denom = _np.maximum(_np.abs(E), 1.0)
+    x = params.Ethr_over_Vpm_per_Torr * p_Torr / denom
+    x = _np.clip(x, -100.0, 100.0)
+    return params.alpha0_1ps_per_Torr * p_Torr * _np.exp(-x)
 
+def Q_ohmic_Wpm3(sigma_Spm_val, E_Vpm):
+    """Vectorized Ohmic heating QΩ = σ |E|^2."""
+    import numpy as _np
+    sig = _np.asarray(sigma_Spm_val, dtype=float)
+    E = _np.asarray(E_Vpm, dtype=float)
+    return _np.maximum(sig, 0.0) * (_np.abs(E) ** 2)
 
-def Da_m2ps(Te_eV: float, p_Torr: float) -> float:
-    """
-    Ambipolar diffusion coefficient [m^2/s].
-    Simple scaling Da ~ Te / p.
-    """
-    return params.Da0_m2ps_per_eV_over_Torr * max(Te_eV, 0.01) / max(p_Torr, 0.1)
-
-
-def S_ion_Hz(E_eff_Vpm: float, p_Torr: float) -> float:
-    """
-    Townsend-like ionization frequency coefficient [1/s] multiplying ne.
-    S = α0 * p * exp( - Ethr * p / |E| )
-    """
-    x = params.Ethr_over_Vpm_per_Torr * p_Torr / max(abs(E_eff_Vpm), 1.0)
-    x = np.clip(x, -100.0, 100.0)
-    return params.alpha0_1ps_per_Torr * p_Torr * np.exp(-x)
-
-
-def Q_ohmic_Wpm3(sigma_Spm_val: float, E_Vpm: float) -> float:
-    """
-    Ohmic heating density [W/m^3]: QΩ = Re(σ) * |E|^2 (σ assumed real here).
-    """
-    return max(sigma_Spm_val, 0.0) * (abs(E_Vpm) ** 2)
-
-
-def Q_loss_Wpm3(ne_m3: float, Te_eV: float) -> float:
-    """
-    Lumped cooling [W/m^3]: radiation + inelastic + misc.
-    """
-    return params.c1_Wpm3peV * max(ne_m3, 0.0) * max(Te_eV, 0.0) + params.c2_Wpm3 * max(ne_m3, 0.0)
+def Q_loss_Wpm3(ne_m3, Te_eV):
+    """Vectorized lumped cooling Qloss = c1 ne Te + c2 ne."""
+    import numpy as _np
+    ne = _np.asarray(ne_m3, dtype=float)
+    Te = _np.asarray(Te_eV, dtype=float)
+    return params.c1_Wpm3peV * _np.maximum(ne, 0.0) * _np.maximum(Te, 0.0) + params.c2_Wpm3 * _np.maximum(ne, 0.0)
 
 
 def v_loss_mps(Te_eV: float) -> float:
