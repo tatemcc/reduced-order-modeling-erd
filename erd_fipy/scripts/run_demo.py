@@ -4,7 +4,7 @@ CLI driver. Run with:
 """
 import sys
 try:
-    from .stepping import run_sim
+    from ..erd_fipy.stepping import run_sim
 except Exception as e:
     print("Could not import or run FiPy-based simulator. Ensure FiPy is installed.")
     print("Error:", e)

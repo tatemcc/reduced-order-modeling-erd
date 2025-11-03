@@ -1,0 +1,28 @@
+# venv & caches
+.venv/
+.uv/
+.uv-cache/
+.pytest_cache/
+
+# python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# outputs (keep small fixtures only)
+erd_fipy/scripts/outputs/
+*.h5
+*.npz
+
+# notebooks
+.ipynb_checkpoints/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+
+# vscode (allow project settings if desired, but not user-specific)
+.vscode/*
+!.vscode/settings.json

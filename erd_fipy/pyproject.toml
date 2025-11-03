@@ -1,0 +1,17 @@
+[project]
+name = "erd-fipy"
+version = "0.1.0"
+description = "FiPy-based ERD plant (data generator)"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "h5py",
+  "fipy",       # solver
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib"]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

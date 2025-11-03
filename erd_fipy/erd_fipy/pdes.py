@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 
 try:
-    from fipy import CellVariable, DiffusionTerm, TransientTerm
+    from fipy import CellVariable, DiffusionTerm, TransientTerm, ImplicitSourceTerm
     from fipy.tools import numerix
 except ImportError as e:
     CellVariable = None
@@ -90,44 +90,58 @@ def build_equations(mesh, ne, Te, fields_module, sigma_profile=None):
     Ephi_cells = np.interp(r_cells, profiles.r_m, profiles.Ephi_Vpm)
 
     # -------- Electron density equation --------
-    # Ambipolar diffusion coefficient Da(Te, p)
-    Da_cells = Da_m2ps(np.maximum(Te.value, 0.05), GAS.p_Torr)  # m^2/s
+    # Ambipolar diffusion coefficient Da(Te, p) as a CellVariable
+    Da_array = Da_m2ps(np.maximum(Te.value, 0.05), GAS.p_Torr)   # numpy array [m^2/s]
+    Da_cells = CellVariable(name="Da", mesh=mesh, value=Da_array)
 
-    # Ionization source coefficient S(Eeff) multiplying ne (Townsend-like)
-    # Use Eeff = |Eφ| (phase-averaged magnitude surrogate)
-    S_coeff = S_ion_Hz(np.maximum(np.abs(Ephi_cells), 1.0), GAS.p_Torr)  # 1/s
-
-    # Lumped wall loss: ne / τ_wall with τ_wall ~ R^2 / (π^2 Da_mean)
+    # --- Ionization - loss coefficient (per-ne) as a CellVariable ---
+    # S_coeff: numpy array [1/s] from |Eφ|
+    # loss_coeff: scalar [1/s] from τ_wall
+    S_coeff = S_ion_Hz(np.maximum(np.abs(Ephi_cells), 1.0), GAS.p_Torr)  # numpy array
     Da_mean = float(np.maximum(Te.value.mean(), 0.05))
     Da_mean = Da_m2ps(Da_mean, GAS.p_Torr)
     tauw = tau_wall_s(Rm, Da_mean)
     loss_coeff = 1.0 / max(tauw, 1e-9)
 
-    ne_eq = TransientTerm(var=ne) == DiffusionTerm(coeff=Da_cells) + (S_coeff - loss_coeff) * ne
+    reaction_coeff = S_coeff - loss_coeff                               # numpy array
+    reaction_cells = CellVariable(name="S_minus_loss", mesh=mesh, value=reaction_coeff)
+
+    # --- Fully implicit ne-equation ---
+    ne_eq = (
+        TransientTerm(var=ne)
+        == DiffusionTerm(coeff=Da_cells, var=ne)
+        + ImplicitSourceTerm(coeff=reaction_cells)
+    )
 
     eqs = [ne_eq]
 
     # -------- Electron energy equation (optional) --------
     if RF.use_energy_eq:
         # Heat capacity (lumped): (3/2) n_e  in "FiPy units"
-        heat_capacity = 1.5 * np.maximum(ne.value, 1e10)
+        heat_capacity_arr = 1.5 * np.maximum(ne.value, 1e10)
+        heat_capacity = CellVariable(name="hc", mesh=mesh, value=heat_capacity_arr)
 
         # Thermal conductivity κ ~ k0 * Te; keep scalar & modest to avoid stiffness
-        kappa = 0.5 * np.maximum(Te.value, 0.1)  # W/m/K (placeholder scaling)
+        kappa_arr = 0.5 * np.maximum(Te.value, 0.1)  # W/m/K (placeholder scaling)
+        kappa = CellVariable(name="kappa", mesh=mesh, value=kappa_arr)
 
         # Ohmic heating density: QΩ = σ |E|^2  (σ from local (ne,Te))
-        sigma_cells = sigma_Spm(
+        sigma_cells_arr = sigma_Spm(
             ne_m3=np.maximum(ne.value, 1e10),
             Te_eV=np.maximum(Te.value, 0.1),
             p_Torr=GAS.p_Torr,
             Tgas_K=GAS.Tgas_K,
         )
-        Qohm = Q_ohmic_Wpm3(sigma_cells, np.maximum(np.abs(Ephi_cells), 1.0))
+        Qohm = Q_ohmic_Wpm3(sigma_cells_arr, np.maximum(np.abs(Ephi_cells), 1.0))
 
         # Lumped cooling
         Qloss = Q_loss_Wpm3(np.maximum(ne.value, 1e10), np.maximum(Te.value, 0.1))
 
-        Te_eq = TransientTerm(coeff=heat_capacity, var=Te) == DiffusionTerm(coeff=kappa, var=Te) + (Qohm - Qloss)
+        Te_eq = (
+            TransientTerm(coeff=heat_capacity, var=Te)
+            == DiffusionTerm(coeff=kappa, var=Te)
+            + (Qohm - Qloss)  # explicit source term is OK
+        )
         eqs.append(Te_eq)
 
     return eqs, profiles
