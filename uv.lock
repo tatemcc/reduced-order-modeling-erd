@@ -627,6 +627,7 @@ name = "erd-capstone"
 version = "0.0.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "h5py" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.3.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
@@ -643,7 +644,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=2.2.6" }]
+requires-dist = [
+    { name = "h5py", specifier = ">=3.15.1" },
+    { name = "numpy", specifier = ">=2.2.6" },
+]
 
 [package.metadata.requires-dev]
 dev = [

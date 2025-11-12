@@ -90,7 +90,7 @@ def build_equations(mesh, ne, Te, fields_module, sigma_profile=None):
     Ephi_cells = np.interp(r_cells, profiles.r_m, profiles.Ephi_Vpm)
 
     # -------- Electron density equation --------
-    # Ambipolar diffusion coefficient Da(Te, p) as a CellVariable
+    # Ambipolar diffusion coefficient Da(Te, p) as a CellVariable for spatial variation
     Da_array = Da_m2ps(np.maximum(Te.value, 0.05), GAS.p_Torr)   # numpy array [m^2/s]
     Da_cells = CellVariable(name="Da", mesh=mesh, value=Da_array)
 
@@ -103,14 +103,13 @@ def build_equations(mesh, ne, Te, fields_module, sigma_profile=None):
     tauw = tau_wall_s(Rm, Da_mean)
     loss_coeff = 1.0 / max(tauw, 1e-9)
 
-    reaction_coeff = S_coeff - loss_coeff                               # numpy array
-    reaction_cells = CellVariable(name="S_minus_loss", mesh=mesh, value=reaction_coeff)
+    reaction_cells = CellVariable(name="S_minus_loss", mesh=mesh, value=S_coeff - loss_coeff)
 
     # --- Fully implicit ne-equation ---
     ne_eq = (
         TransientTerm(var=ne)
         == DiffusionTerm(coeff=Da_cells, var=ne)
-        + ImplicitSourceTerm(coeff=reaction_cells)
+        + ImplicitSourceTerm(coeff=reaction_cells, var=ne)
     )
 
     eqs = [ne_eq]
@@ -136,11 +135,16 @@ def build_equations(mesh, ne, Te, fields_module, sigma_profile=None):
 
         # Lumped cooling
         Qloss = Q_loss_Wpm3(np.maximum(ne.value, 1e10), np.maximum(Te.value, 0.1))
+        heat_source = CellVariable(
+            name="Q_net",
+            mesh=mesh,
+            value=Qohm - Qloss,
+        )
 
         Te_eq = (
             TransientTerm(coeff=heat_capacity, var=Te)
             == DiffusionTerm(coeff=kappa, var=Te)
-            + (Qohm - Qloss)  # explicit source term is OK
+            + heat_source  # explicit source term is OK
         )
         eqs.append(Te_eq)
 

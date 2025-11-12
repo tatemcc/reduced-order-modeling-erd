@@ -5,6 +5,10 @@ All parameters live here so you can tune without touching solver code.
 
 from dataclasses import dataclass
 
+from datetime import datetime
+now = datetime.now()
+timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+
 @dataclass
 class GeometryConfig:
     R_cm: float = 6.0        # cylinder radius [cm]
@@ -37,13 +41,13 @@ class InitBCConfig:
 @dataclass
 class TimeConfig:
     dt_s: float = 5e-6               # slow-time PDE step [s]
-    n_steps: int = 2000              # total steps (e.g., 10 ms)
+    n_steps: int = 2              # total steps (e.g., 10 ms) (should be 2000)
     save_every: int = 50             # write HDF5 every N steps
 
 @dataclass
 class OutputConfig:
     outdir: str = "outputs"
-    run_name: str = "demo_run"
+    run_name: str = f"run_{timestamp}"
 
 @dataclass
 class ModelToggles:
