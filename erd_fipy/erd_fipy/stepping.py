@@ -4,6 +4,7 @@ Controller/plant stepping: set inputs -> update fields -> advance PDEs -> write 
 from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np, os
+from time import time as pytime
 
 from .config import rf as RF, time as TCFG, output as OUT
 from .mesh import make_mesh
@@ -26,10 +27,16 @@ def run_sim(seed: int = 0, sigma_profile=None):
 
     mesh, r, z = make_mesh()
     ne, Te = build_state_vars(mesh)
+    # only make directory if it doesn't exist
+    if not os.path.exists(OUT.outdir):
+        os.makedirs(OUT.outdir)
+    # output names are unique, so no overwrite check needed
 
-    os.makedirs(OUT.outdir, exist_ok=True)
     writer = H5Writer(OUT.outdir, OUT.run_name, r, z)
 
+    # print save info
+    print(f"Running simulation for {TCFG.n_steps} steps, saving every {TCFG.save_every} steps at absolute directory: {OUT.outdir}")
+    ti = pytime()
     for k in range(TCFG.n_steps):
         # (Optional) vary control here if you want closed-loop later
         u = ControlInputs(E0_Vpm=RF.E0_Vpm, phase_deg=RF.phase_deg, freq_Hz=RF.freq_Hz)
@@ -42,8 +49,9 @@ def run_sim(seed: int = 0, sigma_profile=None):
         for eq in eqs:
             eq.sweep(dt=dt)
 
-        # Save periodically
+        # Save periodically (or on final step)
         if (k % TCFG.save_every) == 0 or (k == TCFG.n_steps - 1):
+            print(f"Step {k+1}/{TCFG.n_steps}: writing output...\tElapsed: {pytime() - ti:.2f} s\tStep dt: {dt:.2e} s")
             t = (k + 1) * dt
             writer.write_snapshot(t, prof.Bz_T, ne.value.copy(), Te.value.copy(), u)
 

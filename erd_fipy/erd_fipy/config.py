@@ -41,8 +41,8 @@ class InitBCConfig:
 @dataclass
 class TimeConfig:
     dt_s: float = 5e-6               # slow-time PDE step [s]
-    n_steps: int = 2              # total steps (e.g., 10 ms) (should be 2000)
-    save_every: int = 50             # write HDF5 every N steps
+    n_steps: int = 2000              # total steps (e.g., 10 ms) (should be 2000)
+    save_every: int = 10             # write HDF5 every N steps
 
 @dataclass
 class OutputConfig:

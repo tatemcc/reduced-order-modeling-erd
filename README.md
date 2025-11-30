@@ -78,7 +78,10 @@ This command:
 You can prefix commands with `uv run`, or activate `.venv` directly:
 
 ```bash
-source .venv/bin/activate
+source .venv/bin/activate # on Mac/Linux
+```
+```bash
+source .venv/Scripts/activate
 ```
 
 ---
