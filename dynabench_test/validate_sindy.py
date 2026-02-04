@@ -1,20 +1,18 @@
 import os
 
-# Force single-threaded execution to prevent deadlocks
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-
 import numpy as np
 import h5py
 import glob
 
-# Import your local modules
+# from dynabench.dataset import DynabenchSimulationIterator
+
+# local modules
 from sindy_dynamics import train_sindy_pde
 from save_evolution import animate_video
 from plot_metrics import plot_mse_evolution
+
+# limit number of timesteps
+N_VAL_STEPS = 12
 
 
 def load_dynabench_data(
@@ -36,7 +34,7 @@ def load_dynabench_data(
         if "points" in f:
             points = f["points"][0]
         else:
-            # Generate implicit grid for 15x15
+            # Generate implicit grid
             nx, ny = u_data.shape[1], u_data.shape[2]
             x = np.linspace(0, 1, nx)
             y = np.linspace(0, 1, ny)
@@ -50,6 +48,27 @@ print("--- Starting SINDy Validation Script (Grid Mode) ---")
 
 # 1. Load Training Data
 print("[1/5] Loading Training Data...")
+
+# # DynabenchSimulationIterator returns a DataItem object (batched)
+# train_iterator = DynabenchSimulationIterator(
+#     equation='advection',
+#     structure='cloud',
+#     resolution='low',
+#     split='train'
+# )
+
+# # Fetch the DataItem object
+# train_batch = next(iter(train_iterator))
+
+# # Fix 1: Access attributes directly (.y, .x) instead of unpacking
+# # Fix 2: Index [0] to remove the batch dimension (Batch=1)
+# # train_batch.y shape: (1, Time, Space, 1) -> u_train: (Time, Space, 1)
+# u_train = train_batch.y[0]
+# points = train_batch.x[0]
+
+# print(f"      u_train shape: {u_train.shape}")
+# print(f"      points shape:  {points.shape}")
+
 u_train, points = load_dynabench_data(split="train")
 
 if points.ndim == 3:
@@ -66,10 +85,20 @@ forecast_evolution, model = train_sindy_pde(u_train, t_train, points)
 
 # 3. Load Validation Data
 print("[3/5] Loading Validation Data...")
+# val_iterator = DynabenchSimulationIterator(
+#     equation='advection',
+#     structure='cloud',
+#     resolution='low',
+#     split='val'
+# )
+# val_batch = next(iter(val_iterator))
+
+# u_val_true = val_batch.y[0]
+
+
 u_val_true, _ = load_dynabench_data(split="val")
 
-# --- MODIFICATION: Limit to N steps ---
-N_VAL_STEPS = 12  # <--- Set your desired number of steps here
+# limit to N timesteps
 if N_VAL_STEPS < u_val_true.shape[0]:
     print(f"      [Validation] Limiting validation to first {N_VAL_STEPS} steps.")
     u_val_true = u_val_true[:N_VAL_STEPS]

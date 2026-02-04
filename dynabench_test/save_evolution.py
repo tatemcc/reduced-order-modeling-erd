@@ -3,7 +3,7 @@ from matplotlib.animation import FuncAnimation, PillowWriter
 import numpy as np
 
 
-def animate_video(u_true, u_pred, points, t, filename="sindy_forecast.gif"):
+def animate_video(u_true, u_pred, points, t, filename="output/sindy_forecast.gif"):
     print(f"      [Vis] Generating animation with {len(t)} frames...")
 
     # Setup Figure

@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_mse_evolution(u_true, u_pred, t, filename="mse_vs_time.png"):
+def plot_mse_evolution(u_true, u_pred, t, filename="output/mse_vs_time.png"):
     print(f"      [Metrics] Calculating MSE over {len(t)} time steps...")
 
     # Ensure shapes match

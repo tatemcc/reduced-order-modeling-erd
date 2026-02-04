@@ -1,11 +1,10 @@
 import numpy as np
 import pysindy as ps
-import warnings
 from scipy.integrate import solve_ivp
 
 # Suppress warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="pysindy")
-warnings.filterwarnings("ignore", category=RuntimeWarning)
+# warnings.filterwarnings("ignore", category=UserWarning, module="pysindy")
+# warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 def train_sindy_pde(u, t, points):
@@ -49,20 +48,6 @@ def train_sindy_pde(u, t, points):
         is_uniform=True,
         periodic=True,
     )
-
-    # 4. Define Optimizer (SR3)
-    # target_threshold = 0.01
-    # nu = 1.0
-    # lam = ps.SR3.calculate_l0_weight(target_threshold, nu)
-
-    # optimizer = ps.SR3(
-    #     reg_weight_lam=lam,
-    #     regularizer='L0',
-    #     relax_coeff_nu=nu,
-    #     max_iter=1000,
-    #     normalize_columns=True
-    # )
-    # optimizer = ps.STLSQ(threshold=0.05, alpha=1e-5, normalize_columns=True)
 
     # STLSQ is often more stable for physical systems
     optimizer = ps.STLSQ(
