@@ -21,7 +21,7 @@ import numpy as np
 try:
     from fipy import CellVariable, DiffusionTerm, TransientTerm, ImplicitSourceTerm
     from fipy.tools import numerix
-except ImportError as e:
+except ImportError:
     CellVariable = None
 
 from .config import geometry as G, rf as RF, gas as GAS, icbc as ICBC
@@ -91,7 +91,7 @@ def build_equations(mesh, ne, Te, fields_module, sigma_profile=None):
 
     # -------- Electron density equation --------
     # Ambipolar diffusion coefficient Da(Te, p) as a CellVariable for spatial variation
-    Da_array = Da_m2ps(np.maximum(Te.value, 0.05), GAS.p_Torr)   # numpy array [m^2/s]
+    Da_array = Da_m2ps(np.maximum(Te.value, 0.05), GAS.p_Torr)  # numpy array [m^2/s]
     Da_cells = CellVariable(name="Da", mesh=mesh, value=Da_array)
 
     # --- Ionization - loss coefficient (per-ne) as a CellVariable ---
@@ -106,10 +106,8 @@ def build_equations(mesh, ne, Te, fields_module, sigma_profile=None):
     reaction_cells = CellVariable(name="S_minus_loss", mesh=mesh, value=S_coeff - loss_coeff)
 
     # --- Fully implicit ne-equation ---
-    ne_eq = (
-        TransientTerm(var=ne)
-        == DiffusionTerm(coeff=Da_cells, var=ne)
-        + ImplicitSourceTerm(coeff=reaction_cells, var=ne)
+    ne_eq = TransientTerm(var=ne) == DiffusionTerm(coeff=Da_cells, var=ne) + ImplicitSourceTerm(
+        coeff=reaction_cells, var=ne
     )
 
     eqs = [ne_eq]
@@ -143,8 +141,7 @@ def build_equations(mesh, ne, Te, fields_module, sigma_profile=None):
 
         Te_eq = (
             TransientTerm(coeff=heat_capacity, var=Te)
-            == DiffusionTerm(coeff=kappa, var=Te)
-            + heat_source  # explicit source term is OK
+            == DiffusionTerm(coeff=kappa, var=Te) + heat_source  # explicit source term is OK
         )
         eqs.append(Te_eq)
 

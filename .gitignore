@@ -15,6 +15,13 @@ build/
 erd_fipy/scripts/outputs/
 *.h5
 *.npz
+*.mp4
+*.gif
+dynabench_test/output/
+
+# dynabench data
+dynabench_test/data/
+dynabench_test/archive/
 
 # notebooks
 .ipynb_checkpoints/

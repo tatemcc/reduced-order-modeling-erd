@@ -1,9 +1,11 @@
 """
 Controller/plant stepping: set inputs -> update fields -> advance PDEs -> write outputs.
 """
+
 from __future__ import annotations
 from dataclasses import dataclass
-import numpy as np, os
+import numpy as np
+import os
 
 from .config import rf as RF, time as TCFG, output as OUT
 from .mesh import make_mesh
@@ -11,11 +13,13 @@ from . import fields as fields_backend
 from .pdes import build_state_vars, build_equations
 from .io import H5Writer
 
+
 @dataclass
 class ControlInputs:
     E0_Vpm: float
     phase_deg: float
     freq_Hz: float
+
 
 def run_sim(seed: int = 0, sigma_profile=None):
     """
