@@ -4,7 +4,8 @@
 
 1. Download advection data:
 
-    ```uv run python3 download_data.py```
+    ```python -c 'from dynabench.dataset import download_equation; download_equation("advection", structure="grid", resolution="medium")'```
+
 2. Run:
 
     ```uv run python3 validate_sindy.py```
