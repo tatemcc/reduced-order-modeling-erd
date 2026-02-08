@@ -7,60 +7,44 @@ from scipy.integrate import solve_ivp
 # warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
-def train_sindy_pde(u, t, points):
+def train_sindy_pde(u, t, spatial_grid, threshold=0.1, alpha=1e-05):
     print("      [SINDy] Starting GRID training pipeline (Native PDEFIND Mode)...")
 
-    # 1. Transpose Data to (X, Y, Time, Channels)
-    if u.ndim == 4 and u.shape[1] == 1:
-        u_native = np.transpose(u, (2, 3, 0, 1))
-    elif u.ndim == 4 and u.shape[3] == 1:
-        u_native = np.transpose(u, (1, 2, 0, 3))
-    elif u.ndim == 3:
-        u_expanded = u[..., np.newaxis]
-        u_native = np.transpose(u_expanded, (1, 2, 0, 3))
-    else:
-        u_native = u
-
-    print(f"      [Pre-process] Transposed data to {u_native.shape} (X, Y, T, C)")
+    # u is (X, Y, Time, Channels)
+    n_channels = u.shape[-1]
 
     # 2. Define Grids
-    nx, ny = u_native.shape[0], u_native.shape[1]
+    # Necessary to avoid singular matrix error in ps.FiniteDifference
+    nx, ny = u.shape[0], u.shape[1]
     grid_x = np.linspace(0, 1, nx)
     grid_y = np.linspace(0, 1, ny)
     X, Y = np.meshgrid(grid_x, grid_y, indexing="ij")
     spatial_grid = np.stack([X, Y], axis=-1)
 
     # 3. Define PDE Library
-    library_functions = [lambda x: x]
-    function_names = [lambda x: "u"]
+    # degree=2 allows for quadratic terms (e.g. Burgers u*ux)
+    poly_library = ps.PolynomialLibrary(degree=2, include_bias=False)
 
-    custom_lib = ps.CustomLibrary(
-        library_functions=library_functions, function_names=function_names
-    )
-
-    # diff_method = ps.SmoothedFiniteDifference(smoother_kws={'window_length': 5})
-
+    # Configure PDELibrary
+    # Pass differentiation_method as class and kwargs to allow PDELibrary to control 'd' (order)
     library = ps.PDELibrary(
-        function_library=custom_lib,
+        function_library=poly_library,
         derivative_order=2,
         spatial_grid=spatial_grid,
         include_bias=True,
-        is_uniform=True,
-        periodic=True,
+        differentiation_method=ps.FiniteDifference,
+        diff_kwargs={"periodic": True, "is_uniform": True},
     )
 
-    # STLSQ is often more stable for physical systems
-    optimizer = ps.STLSQ(
-        threshold=0.1,  # Increase this to prune weak/unstable terms
-        alpha=1e-05,  # L2 regularization to keep coefficients small
-        normalize_columns=True,
-    )
+    # STLSQ optimizer (Page 8, 18)
+    optimizer = ps.STLSQ(threshold=threshold, alpha=alpha, normalize_columns=True)
+
+    feature_names = [f"u{i}" for i in range(n_channels)] if n_channels > 1 else ["u"]
 
     # 5. Fit Model
-    print("      [SINDy] Fitting model using SR3...")
-    dt = t[1] - t[0]
+    print("      [SINDy] Fitting model...")
     model = ps.SINDy(feature_library=library, optimizer=optimizer)
-    model.fit(u_native, t=dt)
+    model.fit(u, t=t, feature_names=feature_names)
 
     # 6. Print Results
     print("\n" + "=" * 40)
@@ -68,65 +52,42 @@ def train_sindy_pde(u, t, points):
     print("=" * 40)
     model.print()
 
-    print("\n--- Advection Parameters ---")
+    print("\n--- Identified Parameters ---")
     if len(model.coefficients()) > 0:
         coeffs = model.coefficients()[0]
         features = model.get_feature_names()
         for name, val in zip(features, coeffs):
             if abs(val) > 0.001:
                 print(f"  {name:<10} : {val:.5f}")
-                if "x0_1" in name and "x0_11" not in name:
-                    print(f"             ^ c_x ≈ {-val:.4f}")
-                if "x0_2" in name and "x0_22" not in name:
-                    print(f"             ^ c_y ≈ {-val:.4f}")
 
-    # 7. Simulation Wrapper (Crash-Proof)
+    # 7. Simulation Wrapper
     def forecast_evolution(u0, t_span):
-        u0_flat = u0.flatten()
-        lib_grid = model.feature_library.spatial_grid
-        nx, ny = lib_grid.shape[0], lib_grid.shape[1]
+        # u0 shape: (Channels, X, Y) -> Transpose to (X, Y, Channels)
+        u0_native = np.transpose(u0, (1, 2, 0))
+        u0_flat = u0_native.flatten()
+
+        nx, ny = u0_native.shape[0], u0_native.shape[1]
 
         def rhs(t, u_flat):
-            # 1. Stability Check: If values explode, return 0 to stop integration safely
-            if not np.all(np.isfinite(u_flat)) or np.max(np.abs(u_flat)) > 1e3:
-                return np.zeros_like(u_flat)
+            # Reshape to (X, Y, C)
+            u_reshaped = u_flat.reshape(nx, ny, n_channels)
 
-            u_reshaped = u_flat.reshape(nx, ny, 1)
+            # Add time axis for predict: (X, Y, 1, C)
+            u_in = u_reshaped[..., np.newaxis, :]
 
-            # 2. Predict derivative
-            # Note: We must suppress errors here if the library generates NaNs
-            try:
-                u_dot = model.predict(u_reshaped)
-            except ValueError:
-                return np.zeros_like(u_flat)
+            # Predict derivatives
+            u_dot = model.predict(u_in)
 
+            # Flatten
             return u_dot.flatten()
 
-        # Wrap integration in try-except to catch Sklearn/LSODA crashes
-        try:
-            # Switched back to RK45 (less strict about stiffness warnings than LSODA)
-            sol = solve_ivp(rhs, (t_span[0], t_span[-1]), u0_flat, t_eval=t_span, method="RK45")
+        print(f"      [SINDy] Integrating from t={t_span[0]} to {t_span[-1]}...")
+        sol = solve_ivp(rhs, (t_span[0], t_span[-1]), u0_flat, t_eval=t_span, method="RK45")
 
-            u_sim = sol.y.T.reshape(sol.y.shape[1], nx, ny, 1)
-            steps_computed = u_sim.shape[0]
-
-        except Exception as e:
-            print(f"      [Warning] Integration crashed: {e}")
-            steps_computed = 0
-            u_sim = np.zeros((0, nx, ny, 1))
-
-        # Pad with NaNs if incomplete
-        if steps_computed < len(t_span):
-            print(
-                f"      [Warning] Simulation unstable! Stopped at step {steps_computed}/{len(t_span)}."
-            )
-            pad_len = len(t_span) - steps_computed
-            if steps_computed == 0:
-                # If it crashed immediately, return all NaNs
-                u_sim = np.full((len(t_span), nx, ny, 1), np.nan)
-            else:
-                padding = np.full((pad_len, nx, ny, 1), np.nan)
-                u_sim = np.vstack([u_sim, padding])
+        # Reshape: (Time, X*Y*C) -> (Time, X, Y, C)
+        u_sim_native = sol.y.T.reshape(-1, nx, ny, n_channels)
+        # Transpose back to (Time, Channels, X, Y)
+        u_sim = np.transpose(u_sim_native, (0, 3, 1, 2))
 
         return u_sim
 

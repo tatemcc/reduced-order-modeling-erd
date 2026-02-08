@@ -22,6 +22,7 @@ dynabench_test/output/
 # dynabench data
 dynabench_test/data/
 dynabench_test/archive/
+dynabench_test/documentation/
 
 # notebooks
 .ipynb_checkpoints/
@@ -33,3 +34,5 @@ Thumbs.db
 # vscode (allow project settings if desired, but not user-specific)
 .vscode/*
 !.vscode/settings.json
+
+GEMINI.md

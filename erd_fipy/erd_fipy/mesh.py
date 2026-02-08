@@ -32,4 +32,5 @@ def make_mesh():
     z = (np.arange(G.Nz) + 0.5) * dz
     return mesh, r, z
 
+
 make_mesh()

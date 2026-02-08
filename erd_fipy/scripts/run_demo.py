@@ -4,6 +4,7 @@ CLI driver for the ERD FiPy simulator.
 Supports being executed either as ``python -m erd_fipy.scripts.run_demo`` or
 directly via ``python erd_fipy/scripts/run_demo.py`` (or ``uv run``).
 """
+
 from __future__ import annotations
 
 import sys

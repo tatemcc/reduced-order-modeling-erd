@@ -25,9 +25,9 @@ from .closures import sigma_uniform_equiv
 
 @dataclass
 class FieldProfiles:
-    r_m: np.ndarray        # radial cell centers [m]
-    Ephi_Vpm: np.ndarray   # azimuthal electric field [V/m] (magnitude profile)
-    Bz_T: np.ndarray       # axial magnetic field [T] (magnitude profile)
+    r_m: np.ndarray  # radial cell centers [m]
+    Ephi_Vpm: np.ndarray  # azimuthal electric field [V/m] (magnitude profile)
+    Bz_T: np.ndarray  # axial magnetic field [T] (magnitude profile)
 
 
 def _parabolic_Ephi(r: np.ndarray, R: float, E0: float) -> np.ndarray:
