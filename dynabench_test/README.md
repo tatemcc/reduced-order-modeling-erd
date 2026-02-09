@@ -4,7 +4,10 @@
 
 1. Download advection data:
 
-    ```python -c 'from dynabench.dataset import download_equation; download_equation("advection", structure="grid", resolution="medium")'```
+    ```
+    python -c 'from dynabench.dataset import download_equation; \
+    download_equation("advection", structure="grid", resolution="medium")'
+    ```
 
 2. Run:
 

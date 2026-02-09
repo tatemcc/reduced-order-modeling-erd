@@ -37,53 +37,52 @@ def main():
         "--save_animation", action="store_true", help="Save forecast animation as a .gif"
     )
     parser.add_argument("--index", type=int, default=0, help="Simulation index to load")
-
+    parser.add_argument("--equation", type=str, default="advection", help="Equation name")
+    parser.add_argument(
+        "--structure", type=str, default="grid", help="Data structure (grid, cloud)"
+    )
+    parser.add_argument(
+        "--resolution", type=str, default="high", help="Resolution (low, medium, high)"
+    )
     args = parser.parse_args()
-
-    # Create config dict
     config = vars(args)
 
-    # 1. Load Training Data
     print("[1/5] Loading Training Data...")
-
-    u_train, _ = load_dynabench_data(split="train", sim_index=args.index)
-
-    t_train = np.arange(u_train.shape[0]).astype(float)
-
-    # Pre-process: Transpose (Time, Channels, X, Y) -> (X, Y, Time, Channels)
-    print(
-        f"      [Pre-process] Reshaping training data from {u_train.shape} to (X, Y, Time, Channels)..."
+    u_train, _ = load_dynabench_data(
+        split="train",
+        sim_index=args.index,
+        equation=args.equation,
+        structure=args.structure,
+        resolution=args.resolution,
     )
+    t_train = np.arange(u_train.shape[0]).astype(float)
+    # (Time, Channels, X, Y) -> (X, Y, Time, Channels)
     u_train_sindy = np.transpose(u_train, (2, 3, 0, 1))
 
-    # 2. Identify System Dynamics
     print(f"[2/5] Training SINDy model on {len(t_train)} time steps...")
     forecast_evolution, model, optimizer_params = train_sindy_pde(
         u_train_sindy, t_train, config=config
     )
 
-    # 3. Load Validation Data
     print("[3/5] Loading Validation Data...")
-    u_val_true, _ = load_dynabench_data(split="val")
+    u_val_true, _ = load_dynabench_data(
+        split="val", equation=args.equation, structure=args.structure, resolution=args.resolution
+    )
 
-    # Pre-process Validation Data: (Time, Channels, X, Y) -> (Time, X, Y, Channels)
+    # (Time, Channels, X, Y) -> (Time, X, Y, Channels)
     u_val_true = np.transpose(u_val_true, (0, 2, 3, 1))
 
     # limit to N timesteps
     if args.n_val_steps < u_val_true.shape[0]:
-        print(f"      [Validation] Limiting validation to first {args.n_val_steps} steps.")
         u_val_true = u_val_true[: args.n_val_steps]
-
     t_val = np.arange(u_val_true.shape[0]).astype(float)
 
-    # 4. Forecast
     print("[4/5] Forecasting evolution on validation set...")
     u_val_pred = forecast_evolution(u_val_true[0], t_val)
 
     mse = np.mean((u_val_true.squeeze() - u_val_pred.squeeze()) ** 2)
     print(f"\nValidation Forecast MSE: {mse:.6e}")
 
-    # 5. Visualize
     print("[5/5] Generating visualization...")
 
     optimizer_params["Sim Index"] = args.index
