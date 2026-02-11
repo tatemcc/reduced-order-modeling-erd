@@ -6,7 +6,8 @@ requires-python = ">=3.10"
 dependencies = [
   "numpy",
   "h5py",
-  "fipy",       # solver
+  "fipy", # solver
+  "dynabench>=0.4.4",
 ]
 
 [project.optional-dependencies]

@@ -1,0 +1,221 @@
+"""
+Configuration definitions for the Burgers ROM + SINDy pipeline.
+
+This module defines all configuration objects as dataclasses.
+Each configuration group controls one stage of the pipeline:
+- data loading
+- POD
+- time differentiation
+- SINDy regression
+- rollout forecasting
+
+Configurations are immutable and serializable.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
+from typing import Literal, Optional, Sequence, Dict, Any
+from .paths import find_repo_root
+
+# ---------------------------
+# Constants
+# ---------------------------
+REPO_ROOT = find_repo_root()
+DATA_DIR = REPO_ROOT / "data"
+OUTPUTS_DIR = REPO_ROOT / "outputs"
+
+# ---------------------------
+# Type aliases
+# ---------------------------
+EquationName = Literal["burgers"]
+StructureName = Literal["grid"]
+ResolutionName = Literal["low", "medium", "high"]
+
+# ---------------------------
+# Dataclasses
+# ---------------------------
+@dataclass(frozen=True)
+class DataConfig:
+    """
+    Configuration for loading DynaBench data.
+
+    Attributes
+    ----------
+    equation : str
+        PDE name. Fixed to 'burgers'.
+    structure : str
+        Data structure type. Must be 'grid'.
+    resolution : str
+        Spatial resolution: 'low', 'medium', or 'high'.
+    split : str
+        Dataset split: 'train', 'val', or 'test'.
+    n_trajectories : int
+        Number of trajectories to load.
+    trajectory_ids : sequence of int, optional
+        Explicit trajectory indices to load.
+    data_path : str
+        Filesystem location where Dynabench data are stored.
+    download_if_missing : bool
+        If True, trigger Dynabench to download data to data_path when missing.
+    lookback : int
+        Number of past steps returned by DynabenchIterator.
+    rollout : int
+        Number of future steps returned by DynabenchIterator.
+    squeeze_lookback_dim : bool
+        Whether to remove lookback dimension when lookback == 1.
+    time_stride : int
+        Subsampling factor along the time axis.
+    time_limit : int, optional
+        Maximum number of time steps per trajectory.
+    """
+    equation: EquationName = "burgers"
+    structure: StructureName = "grid"
+    resolution: ResolutionName = "low"
+
+    split: Literal["train", "val", "test"] = "train"
+
+    n_trajectories: int = 1
+    trajectory_ids: Optional[Sequence[int]] = None
+
+    data_path: str | None = DATA_DIR.as_posix()
+    download_if_missing: bool = False
+
+    lookback: int = 1
+    rollout: int = 1
+    squeeze_lookback_dim: bool = True
+
+    time_stride: int = 1
+    time_limit: Optional[int] = None
+
+    def __post_init__(self):
+
+        if self.data_path is None:
+            object.__setattr__(self, "data_path", DATA_DIR.as_posix())
+
+
+@dataclass(frozen=True)
+class PODConfig:
+    """
+    Configuration for POD (SVD) stage.
+
+    Attributes
+    ----------
+    rank : int, optional
+        Fixed POD rank.
+    energy_fraction : float, optional
+        Target cumulative energy fraction for rank selection.
+    center : bool
+        Whether to subtract the mean state before POD.
+    """
+    rank: Optional[int] = 20
+    energy_fraction: Optional[float] = None
+
+    center: bool = True
+
+@dataclass(frozen=True)
+class DerivConfig:
+    """
+    Configuration for time differentiation of POD coefficients.
+
+    Attributes
+    ----------
+    method : str
+        Differentiation method. Currently only 'finite_difference'.
+    scheme : str
+        Finite difference scheme. Currently 'central'.
+    """
+    method: Literal["finite_difference"] = "finite_difference"
+    scheme: Literal["central"] = "central"
+
+
+@dataclass(frozen=True)
+class SINDyConfig:
+    """
+    Configuration for sparse system identification.
+
+    Attributes
+    ----------
+    poly_order : int
+        Polynomial library order.
+    include_bias : bool
+        Whether to include a constant term in the library.
+    optimizer : str
+        Sparse optimizer type: 'stlsq' or 'sr3'.
+    sparsity : float
+        Sparsity for stlsq only.
+    constrain_energy : bool
+        Whether to enforce energy-preserving constraints.
+    """
+    poly_order: int = 2
+    include_bias: bool = False
+
+    optimizer: Literal["stlsq", "sr3"] = "sr3"
+    sparsity: float = 0.05
+
+    constrain_energy: bool = False                          # NOTE UNIMPLEMENTED
+
+
+@dataclass(frozen=True)
+class RolloutConfig:
+    """
+    Configuration for reduced-order model rollout.
+
+    Attributes
+    ----------
+    horizon_steps : int
+        Number of steps to forecast.
+    """
+    horizon_steps: int = 50
+
+
+@dataclass(frozen=True)
+class RunConfig:
+    """
+    Top-level configuration for a single pipeline run.
+
+    Attributes
+    ----------
+    name : str
+        Human-readable run name.
+    seed : int
+        Random seed.
+    data : DataConfig
+        Data loading configuration.
+    pod : PODConfig
+        POD configuration.
+    deriv : DerivConfig
+        Time-derivative configuration.
+    sindy : SINDyConfig
+        Sparse regression configuration.
+    rollout : RolloutConfig
+        Forecasting configuration.
+    outputs_dir : str | None
+        Path to the outputs directory. Runs will be
+        nested under this directory.
+    """
+    name: str = "burgers_rom"
+    seed: int = 0                                   # NOTE: UNUSED SO FAR
+
+    data: DataConfig = DataConfig()
+    pod: PODConfig = PODConfig()
+    deriv: DerivConfig = DerivConfig()
+    sindy: SINDyConfig = SINDyConfig()
+    rollout: RolloutConfig = RolloutConfig()
+
+    outputs_dir: str | None = OUTPUTS_DIR.as_posix()
+
+    def __post_init__(self):
+        if self.outputs_dir is None:
+            object.__setattr__(self, "outputs_dir", OUTPUTS_DIR.as_posix())
+
+
+    def to_dict(self) -> Dict[str, Any]:
+        """
+        Convert the configuration to a plain dictionary.
+
+        Returns
+        -------
+        dict
+            Nested dictionary representation of the configuration.
+        """
+        return asdict(self)

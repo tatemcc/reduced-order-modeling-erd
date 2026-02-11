@@ -16,6 +16,10 @@ erd_fipy/scripts/outputs/
 *.h5
 *.npz
 
+# rom outputs and data
+burgers_rom/outputs/
+burgers_rom/data/
+
 # notebooks
 .ipynb_checkpoints/
 
