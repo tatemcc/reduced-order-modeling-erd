@@ -38,4 +38,13 @@ C = 2
 ny = 15
 nx = 15
 assert(space_product == C*ny*nx)
+layout = SnapshotLayout(ny=ny, nx=nx, n_components=C)
+# basis_U has dimensions (space_product, nsm)
+# for the space_product to be unflattened, the raw array can be transposed first and then each row can be reinflated
+# (I think reinflated sounds cooler than unflattened)
+basis_U_afT = np.transpose(basis_U_arr_flat)
+# Dimensions (nsm, C, ny, nx)
+basis_U_arr = np.array([state_vec_to_fields(basis_U_afT[mdx,:], layout) for mdx in range(0, nsm)])
+assert(basis_U_arr.shape == (nsm, C, ny, nx))
 
+print("so far so good")
