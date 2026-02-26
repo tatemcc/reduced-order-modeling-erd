@@ -1,0 +1,50 @@
+name: debug_single
+seed: 0
+data:
+  equation: burgers
+  structure: grid
+  resolution: low
+  split: train
+  n_trajectories: 1
+  trajectory_ids: null
+  data_path: /scratch/st-cthrampo-1/tate/enph479/erd-capstone/burgers_rom/data
+  download_if_missing: false
+  lookback: 200
+  rollout: 1
+  squeeze_lookback_dim: true
+  time_stride: 1
+  time_limit: null
+pod:
+  rank: 5
+  energy_fraction: null
+  center: true
+deriv:
+  method: finite_difference
+  scheme: central
+sindy:
+  poly_order: 2
+  include_bias: false
+  optimizer: stlsq
+  optimizer_kwargs:
+    threshold: 0.01
+  constrain_energy: false
+rollout:
+  horizon_steps: 50
+plots:
+  enabled: true
+  figures_subdir: figures
+  movies_subdir: movies
+  dpi: 150
+  basis_n_modes: 8
+  basis_cmap: viridis
+  rollout_cmap: viridis
+  movie_fps: 15
+  movie_every: 1
+  movie_components: null
+  metrics_curves: true
+  coeff_time_series: true
+  coeff_pair_phase: true
+  coeff_pair_max_pairs: 45
+  sympy_labels: true
+  sympy_label_style: a_i
+outputs_dir: /scratch/st-cthrampo-1/tate/enph479/erd-capstone/burgers_rom/outputs

@@ -1,0 +1,10 @@
+{
+  "include_bias": false,
+  "n_features": 20,
+  "n_targets": 5,
+  "optimizer": "stlsq",
+  "optimizer_kwargs": {
+    "threshold": 0.01
+  },
+  "poly_order": 2
+}
