@@ -23,6 +23,7 @@ from .rollout import RolloutResult, reshape_coeffs_by_trajectory, rollout_one
 from .snapshot import SnapshotLayout, build_snapshot_matrix
 from .sindy_model import SINDyFitResult, fit_sindy_on_coeffs
 from .derivs import finite_difference_coeff_derivative
+from .plots_and_movies import generate_all_plots_and_movies
 
 
 @dataclass(frozen=True)
@@ -149,7 +150,7 @@ def run(
         poly_order=cfg.sindy.poly_order,
         include_bias=cfg.sindy.include_bias,
         optimizer_name=cfg.sindy.optimizer,
-        sparsity=cfg.sindy.sparsity,
+        optimizer_kwargs=cfg.sindy.optimizer_kwargs,
         feature_names=None,
     )
 
@@ -198,7 +199,7 @@ def run(
                 "poly_order": cfg.sindy.poly_order,
                 "include_bias": cfg.sindy.include_bias,
                 "optimizer": cfg.sindy.optimizer,
-                "sparsity": cfg.sindy.sparsity,
+                "optimizer_kwargs": cfg.sindy.optimizer_kwargs,
                 "n_targets": sindy.n_targets,
                 "n_features": sindy.n_features,
             },
@@ -221,6 +222,15 @@ def run(
         )
         save_json(subdirs["metrics"] / "aggregates.json", aggregates)
 
+        generate_all_plots_and_movies(
+            cfg=cfg.plots,
+            rundir=rundir,
+            layout=layout,
+            pod=pod,
+            sindy=sindy,
+            rollout=rollout,
+        )
+    
     return RunResult(
         run_id=run_id,
         rundir=str(rundir),

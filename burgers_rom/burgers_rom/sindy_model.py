@@ -71,7 +71,7 @@ def build_library(
 
 def build_optimizer(
     optimizer_name: str,
-    sparsity: float,
+    optimizer_kwargs: dict,
 ) -> ps.BaseOptimizer:
     """
     Construct a PySINDy optimizer.
@@ -80,23 +80,20 @@ def build_optimizer(
     ----------
     optimizer_name : str
         'stlsq' or 'sr3'.
-    sparsity : float
-        Sparsity knob. Interpretation depends on optimizer:
-        - STLSQ: threshold
-        - SR3: threshold
+    optimizer_kwargs : dict
+        Optimizer-specific kwargs, e.g. sparsity threshold.
 
     Returns
     -------
     ps.BaseOptimizer
         Configured optimizer.
     """
-    if sparsity < 0:
-        raise ValueError("sparsity must be nonnegative")
 
+    optimizer_kwargs = {} if optimizer_kwargs is None else optimizer_kwargs
     if optimizer_name == "stlsq":
-        return ps.STLSQ(threshold=sparsity)
+        return ps.STLSQ(**optimizer_kwargs)
     if optimizer_name == "sr3":
-        return ps.SR3() # TODO fix
+        return ps.SR3(**optimizer_kwargs) # TODO fix
 
     raise ValueError(f"Unsupported optimizer: {optimizer_name}")
 
@@ -108,7 +105,7 @@ def fit_sindy_on_coeffs(
     poly_order: int,
     include_bias: bool,
     optimizer_name: str,
-    sparsity: float,
+    optimizer_kwargs: dict,
     feature_names: Optional[List[str]] = None,
 ) -> SINDyFitResult:
     """
@@ -128,8 +125,8 @@ def fit_sindy_on_coeffs(
         Include constant feature in library.
     optimizer_name : str
         Optimizer name: 'stlsq' or 'sr3'.
-    sparsity : float
-        Sparsity knob (threshold).
+    optimizer_kwargs : dict
+        Optimizer-specific kwargs, e.g. sparsity threshold.
     feature_names : list of str, optional
         Custom feature names for state variables. If None, defaults are used.
 
@@ -154,7 +151,7 @@ def fit_sindy_on_coeffs(
     Xdot = dA_dt.T
 
     lib = build_library(poly_order=poly_order, include_bias=include_bias)
-    opt = build_optimizer(optimizer_name=optimizer_name, sparsity=sparsity)
+    opt = build_optimizer(optimizer_name=optimizer_name, optimizer_kwargs=optimizer_kwargs)
 
     if feature_names is None:
         feature_names = [f"a{i}" for i in range(r)]
