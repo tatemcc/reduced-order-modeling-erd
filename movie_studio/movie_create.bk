@@ -56,27 +56,38 @@ assert(basis_U_arr.shape == (nsm, C, ny, nx))
 mean_q_arr = state_vec_to_fields(mean_q_arr_flat, layout)
 assert(mean_q_arr.shape == (C, ny, nx))
 
-# Add stuff for what want movie out of
-data_xy = np.zeros((nt, C, ny, nx), float)
-for tdx in range(nt):
-    if ONLY_TOP:
-        data_xy[tdx, :, :, :] = coeffs_A_arr[0, tdx] * basis_U_arr[0, :, :, :]
-    else:
-        for mdx in range(nsm):
-            data_xy[tdx, :, :, :] += coeffs_A_arr[mdx, tdx] * basis_U_arr[mdx, :, :, :]
-        data_xy[tdx, :, :, :] += mean_q_arr
-
 # Convert spatial (x, y) into (magnitude, direction)
-data_md = np.zeros((nt, C, ny, nx), float)
-for tdx in range(nt):
+basis_U_md = np.zeros((nsm, C, ny, nx), float)
+mean_q_md = np.zeros((C, ny, nx), float)
+for mdx in range(nsm):
     for ydx in range(ny):
         for xdx in range(nx):
-            x_comp = data_xy[tdx, 0, ydx, xdx]
-            y_comp = data_xy[tdx, 1, ydx, xdx]
+            x_comp = basis_U_arr[mdx, 0, ydx, xdx]
+            y_comp = basis_U_arr[mdx, 1, ydx, xdx]
             # Magnitude
-            data_md[tdx, 0, ydx, xdx] = math.sqrt(math.pow(x_comp,2) + math.pow(y_comp,2))
+            basis_U_md[mdx, 0, ydx, xdx] = math.sqrt(math.pow(x_comp,2) + math.pow(y_comp,2))
             # Direction
-            data_md[tdx, 1, ydx, xdx] = math.atan2(y_comp, x_comp)
+            basis_U_md[mdx, 1, ydx, xdx] = math.atan2(y_comp, x_comp)
+for ydx in range(ny):
+    for xdx in range(nx):
+        x_comp = mean_q_arr[0, ydx, xdx]
+        y_comp = mean_q_arr[1, ydx, xdx]
+        # Magnitude
+        mean_q_md[0, ydx, xdx] = math.sqrt(math.pow(x_comp,2) + math.pow(y_comp,2))
+        # Direction
+        mean_q_md[1, ydx, xdx] = math.atan2(y_comp, x_comp)
+
+
+# Make movie of just the most dominant mode
+data = np.zeros((nt, C, ny, nx), float)
+for tdx in range(nt):
+    q1 = basis_U_md[0, :, :, :]   # TODO: check that q is for space (not time) modes
+    a1 = coeffs_A_arr[0,:]
+    for tdx in range(nt):
+        # Magnitudes multiplied by a(t)
+        data[tdx, 0, :, :] = a1[tdx] * q1[0, :, :]
+        # Directions stay the same
+        data[tdx, 1, :, :] = q1[1, :, :]
 
 
 # Got lots of help from Copilot on this part:
@@ -183,9 +194,9 @@ def export_mp4(fig, data):
     print(f"Saved {MP4_NAME}")
 
 
-fig = make_figure(data_md)
+fig = make_figure(data)
 fig.show()           # interactive preview
-export_mp4(fig, data_md)
+export_mp4(fig, data)
 
 
 print("so far so good")
