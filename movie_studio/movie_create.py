@@ -7,8 +7,11 @@ import subprocess
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'burgers_rom', 'burgers_rom'))
 from snapshot import state_vec_to_fields, SnapshotLayout
 
-# Setting: just the top mode (bool True) or all included modes (False)
+# Settings: 
+# ONLY_TOP: Boolean, just the top mode (True) or all included modes (False)
 ONLY_TOP = False
+# VORTICITY: Boolean, plots velocity vorticity on z axis (True), plots velocity magnitude on z axis (False)
+VORTICITY = True
 
 # Choose data files
 # Note: by default, stuff happens relative to where you run python, not where the script lives
@@ -66,27 +69,64 @@ for tdx in range(nt):
             data_xy[tdx, :, :, :] += coeffs_A_arr[mdx, tdx] * basis_U_arr[mdx, :, :, :]
         data_xy[tdx, :, :, :] += mean_q_arr
 
-# Convert spatial (x, y) into (magnitude, direction)
-data_md = np.zeros((nt, C, ny, nx), float)
+# Convert spatial (x, y) into (magnitude, direction) or (vorticity, direction)
+data = np.zeros((nt, C, ny, nx), float)
 for tdx in range(nt):
     for ydx in range(ny):
         for xdx in range(nx):
             x_comp = data_xy[tdx, 0, ydx, xdx]
             y_comp = data_xy[tdx, 1, ydx, xdx]
-            # Magnitude
-            data_md[tdx, 0, ydx, xdx] = math.sqrt(math.pow(x_comp,2) + math.pow(y_comp,2))
+            if VORTICITY:
+                # Vorticity
+                # Described by the 2D curl (this is a 2D vector field)
+                # d(vy)/d(x) - d(dx)/d(y)
+                # derivative given by formula (x_(n+1) - x_(n-1)) / (2h)
+                # For edge cases, given by the single-sided version of that
+                h = 1
+                if (xdx > 0) and (xdx < nx-1):
+                    vy_nm1 = data_xy[tdx, 1, ydx, xdx-1]
+                    vy_np1 = data_xy[tdx, 1, ydx, xdx+1]
+                    dvydx = (vy_np1 - vy_nm1) / (2*h)
+                elif (xdx == 0):
+                    vy_0 = data_xy[tdx, 1, ydx, 0]
+                    vy_1 = data_xy[tdx, 1, ydx, 1]
+                    dvydx = (vy_1 - vy_0) / h
+                elif (xdx == nx-1):
+                    vy_n2 = data_xy[tdx, 1, ydx, -2]
+                    vy_n1 = data_xy[tdx, 1, ydx, -1]
+                    dvydx = (vy_n1 - vy_n2) / h
+                if (ydx > 0) and (ydx < ny-1):
+                    vx_nm1 = data_xy[tdx, 0, ydx-1, xdx]
+                    vx_np1 = data_xy[tdx, 0, ydx+1, xdx]
+                    dvxdy = (vx_np1 - vx_nm1) / (2*h)
+                elif (ydx == 0):
+                    vx_0 = data_xy[tdx, 0, 0, xdx]
+                    vx_1 = data_xy[tdx, 0, 1, xdx]
+                    dvxdy = (vx_1 - vx_0) / h
+                elif (ydx == ny-1):
+                    vx_n2 = data_xy[tdx, 0, -2, xdx]
+                    vx_n1 = data_xy[tdx, 0, -1, xdx]
+                    dvxdy = (vx_n1 - vx_n2) / h
+                data[tdx, 0, ydx, xdx] = dvydx - dvxdy
+            else:
+                # Magnitude
+                data[tdx, 0, ydx, xdx] = math.sqrt(math.pow(x_comp,2) + math.pow(y_comp,2))
             # Direction
-            data_md[tdx, 1, ydx, xdx] = math.atan2(y_comp, x_comp)
+            data[tdx, 1, ydx, xdx] = math.atan2(y_comp, x_comp)
 
 
 # Got lots of help from Copilot on this part:
 FPS = 30
 FRAME_DURATION_MS = int(1000 / FPS)
 OUTDIR = Path("frames")
+MP4_NAME = "plasma-movie-"
 if ONLY_TOP:
-    MP4_NAME = "dominant-mode.mp4"
+    MP4_NAME += "top-mode-"
+if VORTICITY:
+    MP4_NAME += "vorticity"
 else:
-    MP4_NAME = "plasma-movie.mp4"
+    MP4_NAME += "magnitude"
+MP4_NAME += ".mp4"
 
 
 # Choose your output resolution:
@@ -183,9 +223,9 @@ def export_mp4(fig, data):
     print(f"Saved {MP4_NAME}")
 
 
-fig = make_figure(data_md)
+fig = make_figure(data)
 fig.show()           # interactive preview
-export_mp4(fig, data_md)
+export_mp4(fig, data)
 
 
 print("so far so good")
