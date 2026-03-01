@@ -164,13 +164,29 @@ def make_figure(data, x=None, y=None):
             surfacecolor=c0,
             colorscale=phase_colorscale,
             cmin=-math.pi, cmax=math.pi,
-            colorbar=dict(title="tan(dir) (rad)"),
+            colorbar=dict(title="dir (rad)"),
             showscale=True,
             # Optional: a bit of lighting can improve "continuous" look
             lighting=dict(ambient=0.35, diffuse=0.7, specular=0.2, roughness=0.8),
     )
 
     fig = go.Figure(data=[surf])
+
+    # Lock z scale
+    if VORTICITY:
+        absmaxvort = max(abs(np.min(data[:, 0, :, :])), abs(np.max(data[:, 0, :, :])))
+        zmin = -absmaxvort
+        zmax = +absmaxvort
+    else:
+        zmin = 0
+        zmax = np.max(data[:, 0, :, :])
+    fig.update_layout(
+            scene=dict(
+                zaxis=dict(
+                    range=[zmin, zmax]
+                )
+            )
+    )
 
     # Build frames (only update z & surfacecolor per frame)
     frames = []
