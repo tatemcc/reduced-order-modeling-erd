@@ -29,6 +29,7 @@ class ErrorCurves:
     field_rel_l2 : np.ndarray
         Relative L2 error in field space, shape (T,).
     """
+
     coeff_mse: np.ndarray
     field_l2: np.ndarray
     field_rel_l2: np.ndarray
@@ -49,6 +50,7 @@ class EnergyCurves:
     energy_pred : np.ndarray
         Energy of predicted fields, shape (T,).
     """
+
     energy_true: np.ndarray
     energy_pred: np.ndarray
 
@@ -222,7 +224,12 @@ def summarize_aggregates(
     Returns
     -------
     dict
-        Aggregate metrics.
+        Aggregate metrics:
+        - final_field_rel_l2: Relative L2 error of fields at the last step.
+        - mean_field_rel_l2: Average relative L2 error over the trajectory.
+        - mean_coeff_mse: Average MSE of POD coefficients over the trajectory.
+        - final_energy_drift: Energy difference (pred - true) at the last step.
+        - mean_abs_energy_drift: Average absolute energy difference over the trajectory.
     """
     final_rel = float(err.field_rel_l2[-1]) if err.field_rel_l2.size else 0.0
     mean_rel = float(np.mean(err.field_rel_l2)) if err.field_rel_l2.size else 0.0

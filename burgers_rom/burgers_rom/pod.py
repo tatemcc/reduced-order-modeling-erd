@@ -10,7 +10,7 @@ This module computes a POD basis from a snapshot matrix and returns:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 
@@ -33,6 +33,7 @@ class PODResult:
     energy_fraction : float
         Fraction of snapshot energy captured by the selected rank.
     """
+
     U: np.ndarray
     s: np.ndarray
     A: np.ndarray
@@ -128,7 +129,7 @@ def compute_pod(
     # X ≈ U_r @ (diag(s_r) @ Vt_r)
     s_r = s[:r]
     Vt_r = Vt[:r, :]
-    A = (s_r[:, None] * Vt_r)
+    A = s_r[:, None] * Vt_r
 
     energy = s**2
     captured = float(np.sum(energy[:r]))

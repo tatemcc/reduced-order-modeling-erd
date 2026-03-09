@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "burgers_rom"
+version = "0.1.0"
+dependencies = [
+    "numpy",
+    "pysindy",
+    "pyyaml",
+    "dynabench",
+]
+
+[tool.setuptools]
+packages = ["burgers_rom"]

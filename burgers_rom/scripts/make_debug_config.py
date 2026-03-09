@@ -1,5 +1,5 @@
 # import all configuration containers
-from burgers_rom.config import  DataConfig, PODConfig, DerivConfig, SINDyConfig, RolloutConfig, RunConfig
+from burgers_rom.config import DataConfig, PODConfig, DerivConfig, SINDyConfig, RunConfig
 
 CONFIG_FILE = "debug_config.yaml"
 
@@ -20,6 +20,4 @@ DataConfig(
 PODConfig()
 DerivConfig()
 SINDyConfig()
-RolloutConfig()
 RunConfig()
-

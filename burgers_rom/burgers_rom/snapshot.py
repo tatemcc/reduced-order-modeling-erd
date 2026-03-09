@@ -29,6 +29,7 @@ class SnapshotLayout:
     n_components : int
         Number of PDE components. Burgers uses 2.
     """
+
     ny: int
     nx: int
     n_components: int = 2

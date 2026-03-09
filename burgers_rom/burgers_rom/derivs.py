@@ -9,7 +9,7 @@ This module relies on PySINDy differentiation tools and provides:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple
+from typing import List, Optional, Sequence
 
 import numpy as np
 from pysindy.differentiation import FiniteDifference
@@ -29,6 +29,7 @@ class DerivativeResult:
     used_indices : np.ndarray
         Indices into the original time axis used for A_used. Shape (M_used,).
     """
+
     A_used: np.ndarray
     dA_dt: np.ndarray
     used_indices: np.ndarray

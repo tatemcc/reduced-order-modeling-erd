@@ -1,0 +1,49 @@
+name: burgers_rom_local
+seed: 0
+data:
+  equation: burgers
+  structure: grid
+  resolution: low
+  split: train
+  n_trajectories: 1
+  trajectory_ids: null
+  data_path: null
+  download_if_missing: false
+  lookback: 20
+  rollout: 10
+  squeeze_lookback_dim: false
+  time_stride: 1
+  time_limit: null
+pod:
+  rank: 20
+  energy_fraction: null
+  center: true
+deriv:
+  method: finite_difference
+  scheme: central
+sindy:
+  poly_order: 2
+  include_bias: false
+  # optimizer: sr3
+  # optimizer_params:
+  #   threshold: 0.1
+  #   nu: 1.0
+  #   max_iter: 20
+  #   normalize_columns: true
+  # optimizer: stlsq
+  # optimizer_params:
+  #   threshold: 0
+  #   alpha: 0.05
+  #   max_iter: 20
+  #   normalize_columns: true
+  optimizer: ssr
+  optimizer_params:
+    alpha: 0.05
+    max_iter: 20
+    normalize_columns: true
+  # optimizer: frols
+  # optimizer_params:
+  #   kappa: null
+  #   normalize_columns: true
+  constrain_energy: false
+outputs_dir: outputs
