@@ -157,7 +157,7 @@ class SINDyConfig:
     poly_order: int = 2
     include_bias: bool = False
 
-    optimizer: Literal["stlsq", "sr3", "ssr", "frols"] = "sr3"
+    optimizer: Literal["stlsq", "sr3", "ssr", "frols", "trappingsr3"] = "sr3"
     optimizer_params: Dict[str, Any] = field(default_factory=lambda: {"threshold": 0.1, "nu": 1.0})
 
     constrain_energy: bool = False  # NOTE UNIMPLEMENTED

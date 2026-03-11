@@ -10,6 +10,7 @@ dependencies = [
     "pysindy",
     "pyyaml",
     "dynabench",
+    "cvxpy>=1.7.5",
 ]
 
 [tool.setuptools]

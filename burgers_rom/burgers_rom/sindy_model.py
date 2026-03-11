@@ -71,8 +71,7 @@ def build_library(
 
 
 def build_optimizer(
-    optimizer_name: str,
-    params: Dict[str, Any],
+    optimizer_name: str, params: Dict[str, Any], n_targets: int
 ) -> ps.BaseOptimizer:
     """
     Construct a PySINDy optimizer.
@@ -83,6 +82,8 @@ def build_optimizer(
         'stlsq', 'sr3', 'ssr', or 'frols'.
     params : dict
         Optimizer parameters.
+    n_target : int
+        Number of targets for TrappingSR3.
 
     Returns
     -------
@@ -126,6 +127,23 @@ def build_optimizer(
         return ps.FROLS(
             kappa=kappa,
             normalize_columns=normalize_columns,
+        )
+    # TODO: choose better default values
+    elif optimizer_name == "trappingsr3":
+        return ps.TrappingSR3(
+            _n_tgts=n_targets,
+            reg_weight_lam=params.get("threshold", 0.1),  # Mapping threshold to lambda
+            eta=params.get("eta", 1.0e5),
+            alpha=params.get("alpha", 1e20),
+            beta=params.get("beta", 1e20),
+            gamma=params.get("gamma", -0.1),
+            tol_m=params.get("tol_m", 1e-5),
+            alpha_A=params.get("alpha_A", None),
+            alpha_m=params.get("alpha_m", None),
+            regularizer=params.get("regularizer", "l2"),
+            eps_solver=params.get("eps_solver", 1e-7),
+            normalize_columns=normalize_columns,
+            max_iter=max_iter,
         )
     else:
         raise ValueError(f"Unsupported optimizer: {optimizer_name}")
@@ -184,7 +202,7 @@ def fit_sindy_on_coeffs(
     Xdot = dA_dt.T
 
     lib = build_library(poly_order=poly_order, include_bias=include_bias)
-    opt = build_optimizer(optimizer_name=optimizer_name, params=optimizer_params)
+    opt = build_optimizer(optimizer_name=optimizer_name, params=optimizer_params, n_targets=r)
 
     if feature_names is None:
         feature_names = [f"a{i}" for i in range(r)]
