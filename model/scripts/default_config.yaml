@@ -1,0 +1,49 @@
+name: erd_model_fit
+data:
+  manifest_path: "REQUIRED_SET_THIS_TO_DATASET_MANIFEST.yaml"
+  train_split: train
+  val_split: val
+  test_split: test
+  max_train: 1
+  max_val: null
+  max_test: 1
+  time_stride: 1
+  time_limit: null
+pod:
+  rank: 6
+  center: true
+deriv:
+  order: 2
+sindy:
+  optimizer: stlsq
+  threshold: 0.05
+  alpha: 0.0
+  max_iter: 80
+  backoff_factor: 0.1
+  backoff_retries: 3
+  fallback_optimizer: stlsq
+  validation_spike_threshold: 0.6
+  trapping:
+    method: local
+    reg_weight_lam: 0.01
+    relax_coeff_nu: 1.0
+    tol: 1.0e-6
+    max_iter: 160
+    eta: 10.0
+    stability_alpha: 1.0e-3
+    stability_beta: 1.0e-3
+    control_threshold: 0.02
+    control_alpha: 1.0e-4
+    control_max_iter: 4
+acceptance:
+  min_pod_energy: 0.92
+  max_rank: 8
+  max_mean_field_rel_l2: 0.20
+rollout:
+  horizon_steps: 120
+plots:
+  dpi: 150
+  movie_fps: 15
+output:
+  outputs_root: outputs/runs
+  tag: auto

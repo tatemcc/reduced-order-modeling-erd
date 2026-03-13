@@ -5,10 +5,9 @@ description = "Closed-loop control (MPC/LQR) around the ROM"
 requires-python = ">=3.10"
 dependencies = [
   "numpy",
-  "scipy",
-  "h5py",
   "matplotlib",
-  "cvxpy",
+  "PyYAML",
+  "pysindy[cvxpy]>=2.0.0",
 ]
 
 [project.optional-dependencies]

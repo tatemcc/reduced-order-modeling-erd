@@ -1,115 +1,176 @@
-"""
-fields.py
----------
-Surrogate backend for azimuthal E-field and axial B-field in a cylindrical ERD.
+"""Field/state helpers for the toy ERD plant.
 
-API:
-    compute_fields(r_m, ne_m3, Te_eV, sigma_profile=None) -> FieldProfiles
-
-- Default: uses a uniform-σ "Bessel-like" surrogate (no FiPy coupling), fast and
-  phase-stepping friendly.
-- If `sigma_profile` is provided (callable or array), we derive an effective
-  σ̄ from it for the skin-depth scaling while still returning Eφ(r) explicitly.
-  This lets you explore arbitrary σ without rewriting the PDEs.
-
-Later, we can swap this module for a variable-σ 1D(r) ODE solver (same API).
+This module defines initial conditions, profile helpers, and conversions between
+FiPy variables and ``(N_r, N_phi)`` NumPy arrays used by the ROM pipeline.
 """
 
 from __future__ import annotations
+
 from dataclasses import dataclass
+
 import numpy as np
 
-from .config import geometry as G, rf as RF
-from .closures import sigma_uniform_equiv
+from .config import RunConfig
+from .mesh import MeshBundle
+
+try:
+    from fipy import CellVariable
+except Exception:  # pragma: no cover - runtime dependency
+    CellVariable = None
 
 
 @dataclass
-class FieldProfiles:
-    r_m: np.ndarray        # radial cell centers [m]
-    Ephi_Vpm: np.ndarray   # azimuthal electric field [V/m] (magnitude profile)
-    Bz_T: np.ndarray       # axial magnetic field [T] (magnitude profile)
+class ERDState:
+    """Live FiPy field variables for the toy ERD state.
 
-
-def _parabolic_Ephi(r: np.ndarray, R: float, E0: float) -> np.ndarray:
+    Attributes:
+        n: Density-like field variable.
+        omega: Vorticity-like field variable.
+        psi: Streamfunction field variable.
     """
-    Smooth non-singular Eφ profile: finite at axis, vanishes at wall.
+
+    n: object
+    omega: object
+    psi: object
+
+
+def ring_equilibrium(r: np.ndarray, cfg: RunConfig) -> np.ndarray:
+    """Evaluate the target ring profile ``n_eq(r)``.
+
+    Args:
+        r: Radial coordinates.
+        cfg: Plant configuration containing ring parameters.
+
+    Returns:
+        Axisymmetric equilibrium profile sampled at ``r``.
     """
-    x = np.clip(r / max(R, 1e-9), 0.0, 1.0)
-    return E0 * (1.0 - x**2)
+
+    rc = cfg.ring
+    return rc.n_bg + rc.n_amp * np.exp(-((r - rc.r_star) ** 2) / (2.0 * rc.sigma_star**2))
 
 
-def _effective_sigma(ne_m3, Te_eV, sigma_profile, r_m) -> float:
+def wall_loss_profile(r: np.ndarray, cfg: RunConfig) -> np.ndarray:
+    """Evaluate wall-loss layer profile ``kappa_w(r)``.
+
+    Args:
+        r: Radial coordinates.
+        cfg: Plant configuration containing wall-layer parameters.
+
+    Returns:
+        Nonnegative sink profile sampled at ``r``.
     """
-    Return an effective uniform conductivity σ̄ for skin-depth scaling.
-    Priority:
-      1) If sigma_profile is an array-like matching r_m -> average (area-weighted).
-      2) If sigma_profile is callable(r) -> sample & average.
-      3) Else: use closures.sigma_uniform_equiv(ne_avg, Te_avg).
+
+    wc = cfg.wall
+    return wc.kappa_0 * np.exp(-((cfg.domain.R_max - r) ** 2) / (2.0 * wc.delta_w**2))
+
+
+def _reshape_to_grid(values: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    """Reshape flattened cell data into ``(N_r, N_phi)`` grid form."""
+
+    nr, nphi = shape
+    return np.asarray(values).reshape(nr, nphi)
+
+
+def variable_to_grid(var: object, shape: tuple[int, int]) -> np.ndarray:
+    """Convert a FiPy ``CellVariable`` to a 2D grid array.
+
+    Args:
+        var: FiPy cell variable.
+        shape: Grid shape ``(N_r, N_phi)``.
+
+    Returns:
+        NumPy array with shape ``shape``.
     """
-    # Case (1) array-like
-    if sigma_profile is not None and hasattr(sigma_profile, "__array__"):
-        sig = np.asarray(sigma_profile, dtype=float)
-        if sig.shape != r_m.shape:
-            raise ValueError("sigma_profile array must have same shape as r_m")
-        # area weighting in cylinder: weight ~ r
-        w = np.maximum(r_m, 1e-9)
-        return float(np.sum(sig * w) / np.sum(w))
 
-    # Case (2) callable
-    if callable(sigma_profile):
-        sig = np.asarray([float(sigma_profile(r)) for r in r_m])
-        w = np.maximum(r_m, 1e-9)
-        return float(np.sum(sig * w) / np.sum(w))
-
-    # Case (3) fallback to uniform σ from average ne, Te
-    ne_avg = float(np.mean(ne_m3)) if np.ndim(ne_m3) else float(ne_m3)
-    Te_avg = float(np.mean(Te_eV)) if np.ndim(Te_eV) else float(Te_eV)
-    return sigma_uniform_equiv(ne_avg, Te_avg)
+    return _reshape_to_grid(np.asarray(var.value), shape)
 
 
-def compute_fields(
-    r_m: np.ndarray,
-    ne_m3: np.ndarray | float,
-    Te_eV: np.ndarray | float,
-    sigma_profile: np.ndarray | callable | None = None,
-) -> FieldProfiles:
+def assign_grid(var: object, arr: np.ndarray) -> None:
+    """Write a 2D grid array into a FiPy ``CellVariable``.
+
+    Args:
+        var: FiPy cell variable to update.
+        arr: Grid array with shape ``(N_r, N_phi)``.
+
+    Returns:
+        None.
     """
-    Compute Eφ(r) and Bz(r) quickly from a surrogate.
 
-    Parameters
-    ----------
-    r_m : (Nr,) ndarray
-        Radial cell-center coordinates [m].
-    ne_m3, Te_eV : scalar or arrays
-        Electron density and temperature (used for σ; arrays will be averaged).
-    sigma_profile : array-like or callable, optional
-        If array-like of shape (Nr,), interpreted as σ(r) [S/m].
-        If callable, evaluated as σ(r) over r_m.
-        If None, a uniform σ̄ is computed from (ne,Te) via closures.
+    var.setValue(np.asarray(arr).reshape(-1))
 
-    Returns
-    -------
-    FieldProfiles
-        r_m, Ephi(r), Bz(r) magnitude profiles.
+
+def stack_state(n: np.ndarray, omega: np.ndarray) -> np.ndarray:
+    """Stack ``n`` and ``omega`` grids into one full-order state vector.
+
+    Args:
+        n: Density field array.
+        omega: Vorticity field array.
+
+    Returns:
+        Vector ``[vec(n), vec(omega)]``.
     """
-    R = G.R_cm * 1e-2
-    mu0 = 4e-7 * np.pi
-    omega = 2.0 * np.pi * RF.freq_Hz
-    E0 = float(RF.E0_Vpm)
 
-    # Eφ profile (magnitude); phase handled by controller/scheduler elsewhere
-    Ephi = _parabolic_Ephi(r_m, R, E0)
+    return np.concatenate([n.reshape(-1), omega.reshape(-1)], axis=0)
 
-    # Effective σ̄ for skin-depth-like attenuation of Bz
-    sigma_bar = max(_effective_sigma(ne_m3, Te_eV, sigma_profile, r_m), 1e-9)
 
-    # Characteristic attenuation wavenumber (quasi-static, conduction-dominated)
-    # k ≈ sqrt(ω μ0 σ / 2)  → skin depth δ ~ sqrt(2/(ω μ0 σ))
-    k = np.sqrt(omega * mu0 * sigma_bar / 2.0)
+def unstack_state(x: np.ndarray, shape: tuple[int, int]) -> tuple[np.ndarray, np.ndarray]:
+    """Recover ``(n, omega)`` grid arrays from a stacked state vector.
 
-    # Scale Bz so that characteristic |∂t B| ~ |∇×E|
-    # Use |B| ~ |E| / ω near axis, then apply radial attenuation exp(-k r)
-    B_scale = max(E0, 1e-12) / max(omega, 1e-12)
-    Bz = B_scale * np.exp(-k * r_m)
+    Args:
+        x: Stacked state vector ``[vec(n), vec(omega)]``.
+        shape: Grid shape ``(N_r, N_phi)``.
 
-    return FieldProfiles(r_m=r_m, Ephi_Vpm=Ephi, Bz_T=Bz)
+    Returns:
+        Tuple ``(n, omega)`` each with shape ``shape``.
+    """
+
+    nr, nphi = shape
+    n_points = nr * nphi
+    n = x[:n_points].reshape(shape)
+    omega = x[n_points : 2 * n_points].reshape(shape)
+    return n, omega
+
+
+def make_initial_state(bundle: MeshBundle, cfg: RunConfig) -> ERDState:
+    """Create initial FiPy variables using ring profile plus small random perturbations.
+
+    Args:
+        bundle: Mesh/geometric metadata for array shapes and coordinates.
+        cfg: Plant run configuration including initialization amplitudes and seed.
+
+    Returns:
+        Initialized :class:`ERDState` containing ``n``, ``omega``, and ``psi``.
+    """
+
+    if CellVariable is None:
+        raise RuntimeError("FiPy is required but not installed.")
+
+    rng = np.random.default_rng(cfg.init.seed)
+
+    n_eq_r = ring_equilibrium(bundle.r, cfg)
+    n_eq = np.repeat(n_eq_r[:, None], bundle.shape[1], axis=1)
+
+    xi_n = rng.standard_normal(bundle.shape)
+    xi_n = xi_n - np.mean(xi_n)
+    xi_w = rng.standard_normal(bundle.shape)
+    xi_w = xi_w - np.mean(xi_w)
+
+    phase1, phase2, phase5 = rng.uniform(0.0, 2.0 * np.pi, size=3)
+    phi = bundle.phi[None, :]
+    coherent = (
+        cfg.init.mode1_amp * np.cos(phi + phase1)
+        + cfg.init.mode2_amp * np.cos(2.0 * phi + phase2)
+        + cfg.init.mode5_amp * np.cos(5.0 * phi + phase5)
+    )
+    ring_env = np.exp(-((bundle.r - cfg.ring.r_star) ** 2) / (2.0 * (1.15 * cfg.ring.sigma_star) ** 2))[:, None]
+
+    n0 = n_eq * (1.0 + cfg.init.eps_n * xi_n + ring_env * coherent)
+    n0 = np.clip(n0, 1e-6, None)
+    omega0 = cfg.init.eps_omega * xi_w
+    psi0 = np.zeros(bundle.shape, dtype=float)
+
+    n_var = CellVariable(name="n", mesh=bundle.mesh, value=n0.reshape(-1))
+    omega_var = CellVariable(name="omega", mesh=bundle.mesh, value=omega0.reshape(-1))
+    psi_var = CellVariable(name="psi", mesh=bundle.mesh, value=psi0.reshape(-1))
+
+    return ERDState(n=n_var, omega=omega_var, psi=psi_var)

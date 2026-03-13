@@ -1,35 +1,79 @@
-"""
-Mesh creation. We use a uniform r–z grid (axisymmetric interpretation).
-FiPy's Grid2D works fine; we treat its x-coordinate as radius (r) and y as axial (z).
+"""Mesh construction for the toy ERD annulus on a rectangularized ``(r, phi)`` grid.
+
+The FiPy mesh uses ``x := phi`` and ``y := r`` so cell arrays can be reshaped to
+``(N_r, N_phi)`` consistently throughout the pipeline.
 """
 
+from __future__ import annotations
+
+from dataclasses import dataclass
+
 import numpy as np
-from .config import geometry as G
+
+from .config import RunConfig
 
 try:
     from fipy import Grid2D
-except ImportError:
+except Exception:  # pragma: no cover - runtime dependency
     Grid2D = None
 
 
-def make_mesh():
+@dataclass(frozen=True)
+class MeshBundle:
+    """Discrete mesh and geometry arrays used by the plant and metrics.
+
+    Attributes:
+        mesh: FiPy 2D grid object with ``x := phi`` and ``y := r``.
+        phi: 1D azimuthal cell-center coordinates.
+        r: 1D radial cell-center coordinates.
+        dphi: Uniform azimuthal spacing.
+        dr: Uniform radial spacing.
+        area_weights: Per-cell area weights ``r * dr * dphi`` with shape ``(N_r, N_phi)``.
+        shape: Convenience tuple ``(N_r, N_phi)``.
     """
-    Returns (mesh, r_coords, z_coords)
-    Units: r, z in meters.
+
+    mesh: object
+    phi: np.ndarray
+    r: np.ndarray
+    dphi: float
+    dr: float
+    area_weights: np.ndarray
+    shape: tuple[int, int]
+
+
+def make_mesh(cfg: RunConfig) -> MeshBundle:
+    """Create the rectangularized annular mesh used by the toy PDE system.
+
+    Args:
+        cfg: Plant run configuration containing domain resolution and bounds.
+
+    Returns:
+        A :class:`MeshBundle` with FiPy mesh and coordinate helpers.
     """
+
     if Grid2D is None:
-        raise RuntimeError("FiPy is not installed. Please install FiPy to run the PDE solver.")
+        raise RuntimeError("FiPy is required but not installed.")
 
-    Rm = G.R_cm * 1e-2
-    Hm = G.H_cm * 1e-2
-    dr = Rm / G.Nr
-    dz = Hm / G.Nz
+    nr = cfg.domain.N_r
+    nphi = cfg.domain.N_phi
 
-    mesh = Grid2D(dx=dr, dy=dz, nx=G.Nr, ny=G.Nz)
+    dphi = 2.0 * np.pi / nphi
+    dr = (cfg.domain.R_max - cfg.domain.R_min) / nr
 
-    # coordinate arrays (cell centers)
-    r = (np.arange(G.Nr) + 0.5) * dr
-    z = (np.arange(G.Nz) + 0.5) * dz
-    return mesh, r, z
+    # Grid convention: x := phi, y := r
+    mesh = Grid2D(dx=dphi, dy=dr, nx=nphi, ny=nr)
 
-make_mesh()
+    phi = (np.arange(nphi) + 0.5) * dphi
+    r = cfg.domain.R_min + (np.arange(nr) + 0.5) * dr
+
+    area_weights = (r[:, None] * dr * dphi).astype(float)
+
+    return MeshBundle(
+        mesh=mesh,
+        phi=phi,
+        r=r,
+        dphi=float(dphi),
+        dr=float(dr),
+        area_weights=area_weights,
+        shape=(nr, nphi),
+    )

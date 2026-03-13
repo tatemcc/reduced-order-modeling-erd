@@ -1,220 +1,169 @@
-# ERD-Capstone
+# ERD Capstone: Toy Twin + ROM + MPC Guide
 
-**Electrodeless Ring Discharge (ERD) Capstone Project**
+This repository implements a complete toy digital-twin workflow for a ring-discharge-like system:
 
-This repository implements the full ERD modeling pipeline:
+1. `erd_fipy` generates high-fidelity field data from a simple PDE plant.
+2. `model/erd_model` fits POD + controlled SINDy reduced dynamics.
+3. `control/erd_control` runs baseline-vs-MPC closed-loop comparisons using the learned ROM.
 
-1. **`erd_fipy`** – real-time plasma and field simulation (FiPy-based data generator)
-2. **`model`** – reduced-order modeling / PySINDy analysis
-3. **`control`** – control-loop and plant-model integration
+The design target is a **low-dimensional, control-ready toy** where the control path is intentionally indirect:
 
-All subprojects share a single reproducible environment managed by [**uv**](https://docs.astral.sh/uv/).
+`u(t) -> f_omega -> omega -> psi -> velocity -> n -> metrics`.
 
----
+## Repository layout
 
-## 🧩  Project layout
-
-```
+```text
 erd-capstone/
-├── pyproject.toml          # uv workspace & dev tools
-├── uv.lock                 # lockfile (commit this)
-├── README.md
-├── .python-version         # "3.10"
-├── erd_fipy/               # FiPy-based data generator
-│   ├── pyproject.toml
-│   └── erd_fipy/
-│       ├── __init__.py
-│       ├── config.py
-│       ├── pdes.py
-│       ├── ...
-│       └── scripts/
-│           └── run_demo.py
-├── model/                  # PySINDy / ROM
-│   ├── pyproject.toml
-│   └── model/
-│       └── ...
-└── control/                # closed-loop control
-    ├── pyproject.toml
-    └── control/
-        └── ...
+├── erd_fipy/
+│   ├── erd_fipy/          # plant, metrics, IO, stepping
+│   └── scripts/           # run_demo.py, generate_training_runs.py
+├── model/
+│   ├── erd_model/         # POD + SINDy pipeline
+│   └── scripts/           # run_pipeline.py, default_config.yaml
+├── control/
+│   ├── erd_control/       # controller + closed-loop orchestration
+│   └── scripts/           # run_closed_loop.py, run_rom_case_study.py, default_config.yaml
+└── outputs/runs/          # canonical run artifacts
 ```
 
----
+## Environment
 
-## ⚙️  Environment setup (Python 3.10 + uv)
-
-### 0. Prerequisites
-
-* Python ≥ 3.10 installed (or let uv install it)
-* [uv](https://docs.astral.sh/uv/) installed (`pip install uv` or system package)
-
-### 1. Clone the repository
-
-```bash
-git clone git@github.com:<org-or-user>/erd-capstone.git
-cd erd-capstone
-```
-
-### 2. Pin Python version
-
-```bash
-uv python install 3.10          # one time per machine
-```
-
-### 3. Create the environment and install dependencies
+From repo root:
 
 ```bash
 uv sync --python 3.10 --group dev
 ```
 
-This command:
+Run commands with `uv run ...`.
 
-* creates a virtual environment at `.venv/`
-* installs all workspace packages (`erd_fipy`, `model`, `control`)
-* installs shared dev tools (black, ruff, pytest, mypy, etc.)
+## Canonical workflow
 
-### 4. Activate the environment (optional)
+### 1) Generate training/test data
 
-You can prefix commands with `uv run`, or activate `.venv` directly:
+The dataset generator is the canonical source of manifests and trajectory runs.
 
 ```bash
-source .venv/bin/activate # on Mac/Linux
-```
-```bash
-source .venv/Scripts/activate
-```
-
----
-
-## 🔬  FiPy setup
-
-By default, FiPy is installed from PyPI and works out of the box.
-However, the FiPy repo itself comes with some helpful examples, so it may be useful to clone it separately and install in editable mode inside this environment:
-
-```bash
-git clone https://github.com/usnistgov/fipy.git <directory of your choice>
-uv run pip uninstall -y fipy          # remove the PyPI wheel
-uv run pip install -e <directory of your choice>     # use your local checkout
+uv run python erd_fipy/scripts/generate_training_runs.py \
+  --preset smoke \
+  --tag meeting_demo \
+  --seed 42
 ```
 
-This overrides the packaged version locally without affecting others.
-CI and teammates will continue to use the stable PyPI release.
+Defaults are intentionally simple:
 
----
+- `smoke`: `1` train run, `0` val runs, `1` test run.
+- reproducible seed-incremented trajectories,
+- persistently exciting piecewise-constant controls,
+- deterministic disturbances with per-run phase jitter (still reproducible by seed).
 
-## ▶️  Running & testing
-
-### Run the demo simulation
+Useful overrides:
 
 ```bash
-uv run python erd_fipy/scripts/run_demo.py
+--n-train --n-val --n-test --block-steps --train-time --test-time --skip-media
 ```
 
-Outputs appear under `outputs/demo_run.h5`.
+### 2) Fit POD + controlled SINDy
 
-### Run tests (once you add them)
+Copy and edit `model/scripts/default_config.yaml`.
+
+Important: `data.manifest_path` is required and must point to your dataset manifest.
 
 ```bash
-uv run pytest -q
+uv run python model/scripts/run_pipeline.py --config model/scripts/default_config.yaml
 ```
 
-### Lint and format
+Model run outputs include:
+
+- `model/basis_U.npy`, `model/mean_state.npy`, `model/sindy_model.pkl`, `model/Xi.npy`
+- `model/training_manifest.yaml`
+- `model/lineage.json` (dataset linkage)
+- `metrics/train_curves.json` and `metrics/test_curves.json` (when available)
+
+### 3) Run closed-loop baseline vs MPC
+
+Copy and edit `control/scripts/default_config.yaml`.
+
+Set:
+
+- `model_run_dir` (required)
+- optionally `plant_config_path` (otherwise inferred from model manifest lineage)
+
+Then run:
 
 ```bash
-uv run ruff check . --fix
-uv run black .
+uv run python control/scripts/run_closed_loop.py --config control/scripts/default_config.yaml
 ```
 
----
+Closed-loop outputs include:
 
-## 🧑‍💻  Development workflow (Git + uv)
+- `stages/open_loop/*`
+- `stages/closed_loop/*`
+- `plots/open_vs_closed_metrics.png`
+- `metrics/relative_deltas.json`
+- `model/lineage.json`
 
-1. **Stay up-to-date**
+## Run-folder and lineage conventions
 
-   ```bash
-   git pull origin main
-   uv sync --frozen --group dev
-   ```
+All pipelines write timestamped folders:
 
-2. **Create a feature branch**
+```text
+outputs/runs/<YYYYmmdd_HHMMSS>_<tag>/
+```
 
-   ```bash
-   git checkout -b feat/<short-description>
-   ```
+Lineage is explicit via metadata files:
 
-3. **Develop**
+- dataset manifest: `dataset_id` + split entries with `run_dir`
+- model run: `model/lineage.json` links to dataset manifest and run dirs
+- control run: `model/lineage.json` links to model run and stage run dirs
 
-   * Work in VS Code (select `.venv/bin/python` or kernel `erd-capstone`)
-   * Run/lint/format/test using `uv run ...`
+Recommended tags:
 
-4. **Commit & push**
+- dataset generation: `--tag <project_or_meeting_name>`
+- model/control configs: `tag: auto` (derives lineage-aware tags)
 
-   ```bash
-   git add -A
-   git commit -m "Implement new plasma BC in erd_fipy"
-   git push -u origin feat/<short-description>
-   ```
+## Config ownership rules
 
-5. **Open a Pull Request**
+To avoid conflicting inputs:
 
-   * Target `main`
-   * CI (ruff + black + pytest) runs automatically
-   * Review → merge
+- **Plant physics/time/grid** are owned by `erd_fipy` config.
+- **Model fitting options** are owned by `model` config.
+- **Closed-loop orchestration options** are owned by `control` config.
+- Cross-stage linkage happens by paths (`manifest_path`, `model_run_dir`), not duplicated knobs.
 
-6. **After merge**
+## Notes on dynamics and demonstration quality
 
-   ```bash
-   git checkout main
-   git pull
-   uv sync --frozen --group dev
-   ```
+Current defaults are tuned for short, visually nontrivial runs:
 
----
+- lower damping/diffusion than early versions,
+- stronger disturbances and initial perturbations,
+- stronger admissible control amplitudes,
+- short smoke horizon suitable for meeting demos.
 
-## 🧹  Pre-commit hooks
+If dynamics are too quiet or too unstable, tune only a few knobs first:
 
-Install once:
+1. `pde.gamma`, `pde.nu`, `pde.D_r`, `pde.D_phi`
+2. disturbance amplitudes in `disturbance.mode1/mode2`
+3. `forcing.drive_u0_base` and `forcing.u_bounds`
+
+## Minimal smoke commands (copy/paste)
 
 ```bash
-uv run pre-commit install
+# 1) dataset
+uv run python erd_fipy/scripts/generate_training_runs.py --preset smoke --tag smoke_demo --seed 7
+
+# 2) edit manifest path in model/scripts/default_config.yaml, then fit
+uv run python model/scripts/run_pipeline.py --config model/scripts/default_config.yaml
+
+# 3) edit model_run_dir in control/scripts/default_config.yaml, then control
+uv run python control/scripts/run_closed_loop.py --config control/scripts/default_config.yaml
 ```
 
-Then every `git commit` automatically runs:
+## Troubleshooting
 
-* ruff (lint)
-* black (format)
-* whitespace fixes
+- `FiPy is required but not installed.`
+  - Run `uv sync --python 3.10 --group dev`.
+- `data.manifest_path must be set ...`
+  - Set `model` config `data.manifest_path` explicitly.
+- Non-finite ROM rollouts in MPC:
+  - lower model rank (`pod.rank`), increase SINDy threshold, and/or tighten control bounds.
 
-Run manually anytime:
-
-```bash
-uv run pre-commit run --all-files
-```
-
----
-
-## 📂  Data management
-
-* **Do not commit** large `.h5` output files.
-  Use scratch storage (e.g., `/scratch/$USER/erd-capstone/outputs/<run-id>.h5`).
-* Commit only small test fixtures under `model/tests/fixtures/`.
-* Document dataset schema (HDF5 group / dataset names) in `erd_fipy/README.md`.
-
----
-
-## 🧠  Quick reference
-
-| Task                 | Command                                       |
-| -------------------- | --------------------------------------------- |
-| Install everything   | `uv sync --group dev`                         |
-| Run code             | `uv run python ...`                           |
-| Run tests            | `uv run pytest -q`                            |
-| Lint / format        | `uv run ruff check . --fix && uv run black .` |
-| Update deps          | `uv add <pkg>` → `uv lock` → commit `uv.lock` |
-| Recreate environment | `rm -rf .venv && uv sync`                     |
-
----
-
-## 📜  License
-
-This project is released under the [MIT License](LICENSE).

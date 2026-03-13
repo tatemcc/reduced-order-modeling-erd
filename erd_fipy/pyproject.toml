@@ -6,8 +6,10 @@ requires-python = ">=3.10"
 dependencies = [
   "numpy",
   "h5py",
-  "fipy", # solver
-  "dynabench>=0.4.4",
+  "matplotlib",
+  "imageio",
+  "PyYAML",
+  "fipy",
 ]
 
 [project.optional-dependencies]

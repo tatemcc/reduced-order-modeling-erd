@@ -1,0 +1,6 @@
+model_run_dir: "REQUIRED_SET_THIS_TO_MODEL_RUN_DIR"
+plant_config_path: null
+preset: smoke
+seed: 0
+outputs_root: outputs/runs
+tag: auto
