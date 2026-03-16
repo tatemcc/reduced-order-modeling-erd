@@ -12,8 +12,8 @@ dist/
 build/
 
 # outputs (keep small fixtures only)
-erd_fipy/scripts/outputs/
-erd_fipy/outputs/
+outputs/
+hw_outputs/
 *.h5
 *.npz
 
