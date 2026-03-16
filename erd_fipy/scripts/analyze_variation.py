@@ -154,6 +154,15 @@ def main() -> None:
             "baseline_delta_median": base_med,
             "delta_median_vs_baseline_factor": diag["summary"]["delta_median_vs_baseline_factor"],
         }
+    else:
+        base_med = float(cfg.metrics.temporal_activity_baseline)
+        cur_med = float(diag["summary"].get("delta_frame_l2_rel_median", 0.0))
+        diag["summary"]["delta_median_vs_baseline_factor"] = cur_med / max(base_med, 1e-14)
+        baseline_info = {
+            "baseline_source": "config.metrics.temporal_activity_baseline",
+            "baseline_delta_median": base_med,
+            "delta_median_vs_baseline_factor": diag["summary"]["delta_median_vs_baseline_factor"],
+        }
 
     summary = diag.get("summary", {})
     acceptance = {

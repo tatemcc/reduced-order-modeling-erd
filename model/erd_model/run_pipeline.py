@@ -173,6 +173,7 @@ def _quick_validation_mean_rel_l2(
         layout=layout,
         A_traj=A_traj,
         U_traj=heldout_traj.controls,
+        fields_traj=heldout_traj.fields,
         dt=dt,
         horizon_steps=horizon,
         state_clip=state_clip,
@@ -181,6 +182,27 @@ def _quick_validation_mean_rel_l2(
     )
     err, _ = compute_curves(ro.A_true, ro.A_pred, ro.fields_true, ro.fields_pred)
     return float(np.mean(err.field_rel_l2))
+
+
+def _rollout_activity_score(rollout: "RolloutResult") -> float:
+    """Score a held-out rollout by how much the true density visibly evolves.
+
+    Args:
+        rollout: One true-vs-predicted rollout bundle.
+
+    Returns:
+        Scalar activity score based on relative frame-to-frame density change.
+        Larger values indicate more visually informative rollouts.
+    """
+
+    n_true = np.asarray(rollout.fields_true[:, 0], dtype=float)
+    if n_true.shape[0] < 2:
+        return 0.0
+    diffs = n_true[1:] - n_true[:-1]
+    num = np.linalg.norm(diffs.reshape(diffs.shape[0], -1), axis=1)
+    den = np.linalg.norm(n_true[:-1].reshape(n_true.shape[0] - 1, -1), axis=1)
+    rel = num / np.maximum(den, 1e-12)
+    return float(np.median(rel) + 0.25 * np.max(rel))
 
 
 
@@ -427,6 +449,7 @@ def run(cfg: RunConfig) -> ModelRunResult:
             layout=layout,
             A_traj=A_traj,
             U_traj=traj.controls,
+            fields_traj=traj.fields,
             dt=dt,
             horizon_steps=horizon,
             state_clip=state_clip,
@@ -441,12 +464,14 @@ def run(cfg: RunConfig) -> ModelRunResult:
 
     aggregates = {k: float(np.mean([a[k] for a in agg_list])) for k in agg_list[0].keys()}
 
-    first_rollout = rollout_results[0]
+    rep_idx = int(np.argmax([_rollout_activity_score(ro) for ro in rollout_results]))
+    rep_traj = heldout[rep_idx]
+    representative_rollout = rollout_results[rep_idx]
     err0, energy0 = compute_curves(
-        first_rollout.A_true,
-        first_rollout.A_pred,
-        first_rollout.fields_true,
-        first_rollout.fields_pred,
+        representative_rollout.A_true,
+        representative_rollout.A_pred,
+        representative_rollout.fields_true,
+        representative_rollout.fields_pred,
     )
 
     split_eval_curves: Dict[str, Dict[str, List[float]]] = {}
@@ -467,6 +492,7 @@ def run(cfg: RunConfig) -> ModelRunResult:
             layout=layout,
             A_traj=A_traj,
             U_traj=traj.controls,
+            fields_traj=traj.fields,
             dt=dt,
             horizon_steps=horizon,
             state_clip=state_clip,
@@ -580,12 +606,15 @@ def run(cfg: RunConfig) -> ModelRunResult:
             "test_split": cfg.data.test_split,
             "train_run_dirs": [tr.run_dir for tr in train],
             "test_run_dirs": [tr.run_dir for tr in (test if test else val)],
+            "representative_rollout_run_dir": rep_traj.run_dir,
+            "representative_rollout_index": rep_idx,
+            "representative_rollout_activity_score": _rollout_activity_score(representative_rollout),
         },
     )
 
-    save_npy(run_dir / "fields" / "rollout_q_true.npy", first_rollout.q_true)
-    save_npy(run_dir / "fields" / "rollout_q_pred.npy", first_rollout.q_pred)
-    save_npy(run_dir / "controls" / "rollout_u.npy", first_rollout.U_used)
+    save_npy(run_dir / "fields" / "rollout_q_true.npy", representative_rollout.q_true)
+    save_npy(run_dir / "fields" / "rollout_q_pred.npy", representative_rollout.q_pred)
+    save_npy(run_dir / "controls" / "rollout_u.npy", representative_rollout.U_used)
 
     save_json(
         run_dir / "metrics" / "curves.json",
@@ -624,7 +653,7 @@ def run(cfg: RunConfig) -> ModelRunResult:
             run_dir=run_dir,
             pod=pod,
             sindy=sindy,
-            rollout=first_rollout,
+            rollout=representative_rollout,
             err=err0,
             energy=energy0,
         )
@@ -645,6 +674,6 @@ def run(cfg: RunConfig) -> ModelRunResult:
         run_dir=str(run_dir),
         pod=pod,
         sindy=sindy,
-        rollout=first_rollout,
+        rollout=representative_rollout,
         aggregates=aggregates,
     )

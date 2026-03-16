@@ -116,6 +116,19 @@ class ERDPlant:
         u_r, u_phi = self.ops.velocity(psi)
         return np.sqrt(u_r**2 + u_phi**2)
 
+    def velocity_components_from_omega(self, omega: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Compute ``(u_r, u_phi)`` from a vorticity field.
+
+        Args:
+            omega: Vorticity field ``omega(r, phi)``.
+
+        Returns:
+            Tuple ``(u_r, u_phi)`` derived from the diagnostic Poisson solve.
+        """
+
+        psi = self.ops.solve_poisson(omega)
+        return self.ops.velocity(psi)
+
     def state_vector(self) -> np.ndarray:
         """Return the stacked state vector ``[vec(n), vec(omega)]``.
 
@@ -156,9 +169,8 @@ class ERDPlant:
             dr=self.bundle.dr,
         )
         return n_next, omega_next, psi_next, {
-            "E_wob": metrics.E_wob,
-            "E1": metrics.E1,
-            "E2": metrics.E2,
+            "J_prof": metrics.J_prof,
+            "E_low": metrics.E_low,
             "L_w": metrics.L_w,
             "sigma_r": metrics.sigma_r,
             "r_mean": metrics.r_mean,
@@ -202,9 +214,8 @@ class ERDPlant:
 
         curves = {
             "t": [],
-            "E_wob": [],
-            "E1": [],
-            "E2": [],
+            "J_prof": [],
+            "E_low": [],
             "L_w": [],
             "sigma_r": [],
             "r_mean": [],
@@ -215,7 +226,8 @@ class ERDPlant:
 
         n, omega, _ = self.get_fields()
         if writer is not None:
-            writer.append_snapshot(0.0, n, omega, u_mag=self.velocity_magnitude_from_omega(omega))
+            u_r0, u_phi0 = self.velocity_components_from_omega(omega)
+            writer.append_snapshot(0.0, n, omega, u_mag=np.sqrt(u_r0**2 + u_phi0**2), u_r=u_r0, u_phi=u_phi0)
 
         u_prev = default_open_loop_control(cfg)
 
@@ -243,15 +255,18 @@ class ERDPlant:
             if writer is not None:
                 writer.append_metrics(t_next, metric)
                 if ((k + 1) % cfg.time.snapshot_every) == 0 or (k == cfg.time.n_steps - 1):
+                    u_r_snap, u_phi_snap = self.velocity_components_from_omega(omega_next)
                     writer.append_snapshot(
                         t_next,
                         n_next,
                         omega_next,
-                        u_mag=self.velocity_magnitude_from_omega(omega_next),
+                        u_mag=np.sqrt(u_r_snap**2 + u_phi_snap**2),
+                        u_r=u_r_snap,
+                        u_phi=u_phi_snap,
                     )
 
             curves["t"].append(float(t_next))
-            for key in ("E_wob", "E1", "E2", "L_w", "sigma_r", "r_mean", "M", "E_u", "P_ctrl"):
+            for key in ("J_prof", "E_low", "L_w", "sigma_r", "r_mean", "M", "E_u", "P_ctrl"):
                 curves[key].append(float(metric[key]))
 
         if writer is not None:
@@ -265,9 +280,12 @@ class ERDPlant:
         add_window_efficiency(curves, cfg)
         add_degradation_metrics(curves, cfg)
         summary = {
-            "final_E_wob": float(curves["E_wob"][-1]) if curves["E_wob"] else 0.0,
-            "mean_E_wob": float(np.mean(curves["E_wob"])) if curves["E_wob"] else 0.0,
+            "final_J_prof": float(curves["J_prof"][-1]) if curves["J_prof"] else 0.0,
+            "mean_J_prof": float(np.mean(curves["J_prof"])) if curves["J_prof"] else 0.0,
+            "final_E_low": float(curves["E_low"][-1]) if curves["E_low"] else 0.0,
+            "mean_E_low": float(np.mean(curves["E_low"])) if curves["E_low"] else 0.0,
             "final_L_w": float(curves["L_w"][-1]) if curves["L_w"] else 0.0,
+            "final_sigma_r": float(curves["sigma_r"][-1]) if curves["sigma_r"] else 0.0,
             "final_L_w_cum": float(curves["L_w_cum"][-1]) if curves["L_w_cum"] else 0.0,
             "final_badness_score": float(curves["badness_score"][-1]) if curves["badness_score"] else 0.0,
             "mean_P_ctrl": float(np.mean(curves["P_ctrl"])) if curves["P_ctrl"] else 0.0,

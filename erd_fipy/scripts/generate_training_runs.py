@@ -94,15 +94,15 @@ def random_piecewise_schedule(
             excite = float(np.clip(excite_fraction, 0.0, 1.0 - warm))
 
             if frac < warm:
-                asym_scale = 0.30
-                u0_scale = 0.20
-            elif frac < warm + excite:
-                asym_scale = 1.00
+                asym_scale = 0.18
                 u0_scale = 0.55
+            elif frac < warm + excite:
+                asym_scale = 0.50
+                u0_scale = 0.85
             else:
-                asym_scale = 1.20
-                u0_scale = 0.50
-                sample[1:] += rng.normal(loc=0.0, scale=0.15 * bounds[1:], size=4)
+                asym_scale = 0.65
+                u0_scale = 0.75
+                sample[1:] += rng.normal(loc=0.0, scale=0.08 * bounds[1:], size=4)
 
             sample[1:] = np.clip(sample[1:] * asym_scale, -bounds[1:], bounds[1:])
             # Keep axisymmetric drive near operating point while still

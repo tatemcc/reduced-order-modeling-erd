@@ -69,15 +69,25 @@ class RandomShootingMPCController:
             self.cfg.domain.N_r,
         )
         self.dr = (self.cfg.domain.R_max - self.cfg.domain.R_min) / self.cfg.domain.N_r
+        self.dphi = 2.0 * np.pi / self.cfg.domain.N_phi
 
         self.kappa_w_r = self.cfg.wall.kappa_0 * np.exp(
             -((self.cfg.domain.R_max - self.r) ** 2) / (2.0 * self.cfg.wall.delta_w**2)
+        )
+        self.n_eq_r = self.cfg.ring.n_bg + self.cfg.ring.n_amp * np.exp(
+            -((self.r - self.cfg.ring.r_star) ** 2) / (2.0 * self.cfg.ring.sigma_star**2)
         )
         self.w_r = self.r * np.exp(
             -((self.r - self.cfg.ring.r_star) ** 2) / (2.0 * self.cfg.metrics.sigma_w**2)
         )
 
         self.bounds = np.asarray(self.cfg.forcing.u_bounds, dtype=float)
+        if self.cfg.control.H != self.cfg.control.shoot_segments * self.cfg.control.shoot_seg_len:
+            raise ValueError(
+                "Control horizon must satisfy H == shoot_segments * shoot_seg_len "
+                f"(got H={self.cfg.control.H}, segments={self.cfg.control.shoot_segments}, "
+                f"seg_len={self.cfg.control.shoot_seg_len})"
+            )
 
     @staticmethod
     def load_model_bundle(model_run_dir: str | Path) -> ModelBundle:
@@ -148,24 +158,24 @@ class RandomShootingMPCController:
         return x[: self.n_points].reshape(self.nr, self.nphi)
 
     def _metrics_from_n(self, n: np.ndarray, u: np.ndarray) -> tuple[float, float, float, float, float]:
-        """Evaluate control objective terms from a lifted ``n`` field and control.
+        """Evaluate lifted-field MPC metrics from ``n`` and the current control.
 
         Args:
             n: Density field ``n(r, phi)``.
             u: Control vector for the current stage.
 
         Returns:
-            Tuple ``(E_wob, L_w, sigma_r, sigma_r_sq, P_ctrl)``.
+            Tuple ``(J_prof, E_low, L_w, sigma_r_sq, P_ctrl)``.
         """
 
-        n_hat = np.fft.fft(n, axis=1) / n.shape[1]
-        e1 = 0.5 * np.sum(self.w_r * np.abs(n_hat[:, 1]) ** 2) * self.dr
-        e2 = 0.5 * np.sum(self.w_r * np.abs(n_hat[:, 2]) ** 2) * self.dr
-        e_wob = float(e1 + e2)
-
-        l_w = float(np.sum(self.kappa_w_r[:, None] * n * (self.r[:, None] * self.dr * (2.0 * np.pi / self.nphi))))
-
         nbar = np.mean(n, axis=1)
+        j_prof = 0.5 * np.sum(self.r * (nbar - self.n_eq_r) ** 2) * self.dr
+
+        n_hat = np.fft.fft(n, axis=1) / n.shape[1]
+        e_low = 0.5 * np.sum(self.w_r[:, None] * np.abs(n_hat[:, 1:5]) ** 2) * self.dr
+
+        l_w = float(np.sum(self.kappa_w_r[:, None] * n * (self.r[:, None] * self.dr * self.dphi)))
+
         mass = float(np.sum(nbar * self.r) * self.dr)
         mass = max(mass, 1e-12)
         r_mean = float(np.sum(self.r * nbar * self.r) * self.dr / mass)
@@ -178,7 +188,7 @@ class RandomShootingMPCController:
         )
 
         sigma_r2 = max(sigma_r2, 0.0)
-        return e_wob, l_w, float(np.sqrt(sigma_r2)), sigma_r2, p_ctrl
+        return float(j_prof), float(e_low), l_w, sigma_r2, p_ctrl
 
     def _predict_step(self, a: np.ndarray, u: np.ndarray) -> np.ndarray:
         """Advance one reduced step with explicit Euler and finite-value guards.
@@ -223,37 +233,30 @@ class RandomShootingMPCController:
         _ = t_k
         H = self.cfg.control.H
         N_shoot = self.cfg.control.N_shoot
+        shoot_segments = self.cfg.control.shoot_segments
+        shoot_seg_len = self.cfg.control.shoot_seg_len
         w = self.cfg.control.weights
         rate_penalty = float(self.cfg.control.rate_penalty)
 
         x_ref = self.lift(np.asarray(a_k, dtype=float))
         n_ref = self._decode_n(x_ref)
-        e_ref, l_ref, sigma_ref, _, _ = self._metrics_from_n(n_ref, np.asarray(u_prev, dtype=float))
+        j_ref, e_ref, _, sigma_ref2, _ = self._metrics_from_n(n_ref, np.asarray(u_prev, dtype=float))
 
         best_cost = np.inf
         best_u0 = np.asarray(u_prev, dtype=float)
 
         candidate0 = np.repeat(np.asarray(u_prev, dtype=float)[None, :], H, axis=0)
-        sample_scale0 = np.asarray([0.05, 0.20, 0.20, 0.20, 0.20], dtype=float) * self.bounds
-        sample_step = np.asarray([0.03, 0.12, 0.12, 0.12, 0.12], dtype=float) * self.bounds
 
         for n_cand in range(N_shoot + 1):
             if n_cand == 0:
                 seq = candidate0.copy()
             else:
-                # Sample smooth bounded sequences around the previous action
-                # so the controller explores local corrections, not only
-                # globally random bang-bang trajectories.
-                seq = np.empty((H, 5), dtype=float)
-                seq[0] = np.asarray(u_prev, dtype=float) + self.rng.normal(loc=0.0, scale=sample_scale0)
-                for h in range(1, H):
-                    seq[h] = seq[h - 1] + self.rng.normal(loc=0.0, scale=sample_step)
-                seq = np.clip(seq, -self.bounds, self.bounds)
+                segment_values = self.rng.uniform(-self.bounds, self.bounds, size=(shoot_segments, 5))
+                seq = np.repeat(segment_values, repeats=shoot_seg_len, axis=0)
 
             a = np.asarray(a_k, dtype=float).copy()
             up = np.asarray(u_prev, dtype=float).copy()
             cost = 0.0
-            l_prev = l_ref
 
             for h in range(H):
                 u = np.clip(seq[h], -self.bounds, self.bounds)
@@ -264,26 +267,24 @@ class RandomShootingMPCController:
                 x = self.lift(a)
                 n_field = self._decode_n(x)
 
-                e_wob, l_w, sigma_r, sigma_r2, p_ctrl = self._metrics_from_n(n_field, u)
-                if not all(np.isfinite(v) for v in (e_wob, l_w, sigma_r, sigma_r2, p_ctrl)):
+                j_prof, e_low, l_w, sigma_r2, p_ctrl = self._metrics_from_n(n_field, u)
+                if not all(np.isfinite(v) for v in (j_prof, e_low, l_w, sigma_r2, p_ctrl)):
                     cost = np.inf
                     break
                 rate = np.sum((u - up) ** 2)
-                wob_growth = max(0.0, e_wob - e_ref)
-                sig_growth = max(0.0, sigma_r - sigma_ref)
-                lw_slope = max(0.0, l_w - l_prev)
+                j_growth = max(0.0, j_prof - j_ref)
+                e_growth = max(0.0, e_low - e_ref)
                 cost += (
-                    w.w_wob_abs * (e_wob**2)
-                    + w.w_wob_growth * (wob_growth**2)
-                    + w.w_wall * l_w
-                    + w.w_coh * sigma_r2
-                    + w.w_coh_growth * (sig_growth**2)
-                    + w.w_wall_slope * (lw_slope**2)
-                    + w.w_pow * p_ctrl
-                    + w.w_rate * rate_penalty * rate
+                    w.w_j * j_prof
+                    + w.w_j_growth * (j_growth**2)
+                    + w.w_e * (e_low**2)
+                    + w.w_e_growth * (e_growth**2)
+                    + w.w_l * l_w
+                    + w.w_sigma * sigma_r2
+                    + w.w_u * p_ctrl
+                    + w.w_delta_u * rate_penalty * rate
                 )
                 up = u
-                l_prev = l_w
 
             if cost < best_cost:
                 best_cost = cost

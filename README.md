@@ -10,6 +10,10 @@ The design target is a **low-dimensional, control-ready toy** where the control 
 
 `u(t) -> f_omega -> omega -> psi -> velocity -> n -> metrics`.
 
+Detailed technical documentation for the PDE plant, POD/SINDy model, MPC controller,
+and the end-to-end artifact workflow lives in
+[docs/erd_digital_twin_spec.md](/scratch/st-cthrampo-1/tate/enph479/erd-capstone/docs/erd_digital_twin_spec.md).
+
 ## Repository layout
 
 ```text
@@ -141,7 +145,7 @@ Current defaults are tuned for short, visually nontrivial runs:
 
 If dynamics are too quiet or too unstable, tune only a few knobs first:
 
-1. `pde.gamma`, `pde.nu`, `pde.D_r`, `pde.D_phi`
+1. `pde.C`, `pde.kappa_0`, `pde.nu_n`, `pde.nu_omega`, `pde.gamma_omega`, `pde.hyper_p`
 2. disturbance amplitudes in `disturbance.mode1/mode2`
 3. `forcing.drive_u0_base` and `forcing.u_bounds`
 
@@ -166,4 +170,3 @@ uv run python control/scripts/run_closed_loop.py --config control/scripts/defaul
   - Set `model` config `data.manifest_path` explicitly.
 - Non-finite ROM rollouts in MPC:
   - lower model rank (`pod.rank`), increase SINDy threshold, and/or tighten control bounds.
-

@@ -11,6 +11,7 @@ import shutil
 from typing import Dict
 
 import matplotlib.pyplot as plt
+import numpy as np
 import yaml
 
 from erd_fipy import ERDPlant, default_open_loop_control, load_run_config, run_config_from_dict
@@ -139,21 +140,21 @@ def _plot_comparison(run_dir: Path, open_curves: Dict, closed_curves: Dict) -> N
     fig, axes = plt.subplots(2, 3, figsize=(14, 7))
     axes = axes.reshape(-1)
 
-    axes[0].plot(t_o, open_curves["E_wob"], label="open")
-    axes[0].plot(t_c, closed_curves["E_wob"], label="closed")
-    axes[0].set_title("E_wob")
+    axes[0].plot(t_o, open_curves["J_prof"], label="open")
+    axes[0].plot(t_c, closed_curves["J_prof"], label="closed")
+    axes[0].set_title("J_prof")
 
-    axes[1].plot(t_o, open_curves["L_w"], label="open")
-    axes[1].plot(t_c, closed_curves["L_w"], label="closed")
-    axes[1].set_title("L_w")
+    axes[1].plot(t_o, open_curves["E_low"], label="open")
+    axes[1].plot(t_c, closed_curves["E_low"], label="closed")
+    axes[1].set_title("E_low")
 
-    axes[2].plot(t_o, open_curves["sigma_r"], label="open")
-    axes[2].plot(t_c, closed_curves["sigma_r"], label="closed")
-    axes[2].set_title("sigma_r")
+    axes[2].plot(t_o, open_curves["L_w"], label="open")
+    axes[2].plot(t_c, closed_curves["L_w"], label="closed")
+    axes[2].set_title("L_w")
 
-    axes[3].plot(t_o, open_curves["P_ctrl"], label="open")
-    axes[3].plot(t_c, closed_curves["P_ctrl"], label="closed")
-    axes[3].set_title("P_ctrl")
+    axes[3].plot(t_o, open_curves["sigma_r"], label="open")
+    axes[3].plot(t_c, closed_curves["sigma_r"], label="closed")
+    axes[3].set_title("sigma_r")
 
     axes[4].plot(t_o, open_curves.get("L_w_cum", []), label="open")
     axes[4].plot(t_c, closed_curves.get("L_w_cum", []), label="closed")
@@ -249,13 +250,15 @@ def run_closed_loop(cfg: ControlRunConfig) -> str:
         return float(vals[-1])
 
     metric_keys = [
-        "E_wob",
+        "J_prof",
+        "E_low",
         "L_w",
         "sigma_r",
         "P_ctrl",
-        "E_wob_excess",
-        "sigma_r_excess",
         "L_w_cum",
+        "J_prof_excess",
+        "E_low_excess",
+        "sigma_r_excess",
         "badness_score",
     ]
 
@@ -284,6 +287,51 @@ def run_closed_loop(cfg: ControlRunConfig) -> str:
 
     with (run_dir / "metrics" / "relative_deltas.json").open("w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
+
+    tail_open = open_result.curves.get("E_low", [])
+    tail_closed = closed_result.curves.get("E_low", [])
+    tail_start_open = len(tail_open) * 2 // 3
+    tail_start_closed = len(tail_closed) * 2 // 3
+    mean_e_low_open_tail = _mean({"tmp": tail_open[tail_start_open:]}, "tmp")
+    mean_e_low_closed_tail = _mean({"tmp": tail_closed[tail_start_closed:]}, "tmp")
+
+    final_j_open = _final(open_result.curves, "J_prof")
+    final_j_closed = _final(closed_result.curves, "J_prof")
+    final_lwc_open = _final(open_result.curves, "L_w_cum")
+    final_lwc_closed = _final(closed_result.curves, "L_w_cum")
+
+    finite_open = all(
+        all(np.isfinite(np.asarray(open_result.curves.get(key, []), dtype=float)))
+        for key in ("J_prof", "E_low", "L_w", "sigma_r", "L_w_cum", "badness_score")
+    )
+    finite_closed = all(
+        all(np.isfinite(np.asarray(closed_result.curves.get(key, []), dtype=float)))
+        for key in ("J_prof", "E_low", "L_w", "sigma_r", "L_w_cum", "badness_score")
+    )
+    acceptance = {
+        "final_J_prof_open": final_j_open,
+        "final_J_prof_closed": final_j_closed,
+        "final_L_w_cum_open": final_lwc_open,
+        "final_L_w_cum_closed": final_lwc_closed,
+        "mean_E_low_final_third_open": mean_e_low_open_tail,
+        "mean_E_low_final_third_closed": mean_e_low_closed_tail,
+        "finite_open_curves": finite_open,
+        "finite_closed_curves": finite_closed,
+        "criterion_J_prof_reduction": bool(final_j_closed <= 0.7 * max(final_j_open, 1e-12)),
+        "criterion_L_w_cum_reduction": bool(final_lwc_closed <= 0.7 * max(final_lwc_open, 1e-12)),
+        "criterion_E_low_final_third_reduction": bool(
+            mean_e_low_closed_tail <= 0.8 * max(mean_e_low_open_tail, 1e-12)
+        ),
+        "criterion_no_nans": bool(finite_open and finite_closed),
+    }
+    acceptance["all_passed"] = bool(
+        acceptance["criterion_J_prof_reduction"]
+        and acceptance["criterion_L_w_cum_reduction"]
+        and acceptance["criterion_E_low_final_third_reduction"]
+        and acceptance["criterion_no_nans"]
+    )
+    with (run_dir / "metrics" / "acceptance.json").open("w", encoding="utf-8") as f:
+        json.dump(acceptance, f, indent=2)
 
     with (run_dir / "model" / "lineage.json").open("w", encoding="utf-8") as f:
         json.dump(

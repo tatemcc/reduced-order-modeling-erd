@@ -22,6 +22,43 @@ def _savefig(fig, path: Path, dpi: int) -> None:
     plt.close(fig)
 
 
+def _write_contact_sheet(
+    data: np.ndarray,
+    path: Path,
+    title_prefix: str,
+    dpi: int,
+    cmap: str = "viridis",
+) -> None:
+    """Write a small contact sheet for a rollout field movie.
+
+    Args:
+        data: Field movie array with shape ``(T, N_r, N_phi)``.
+        path: Output image path.
+        title_prefix: Title stem used for each sampled frame.
+        dpi: Figure export DPI.
+        cmap: Matplotlib colormap name.
+
+    Returns:
+        None.
+    """
+
+    if data.shape[0] == 0:
+        return
+    ncols = min(6, data.shape[0])
+    idx = np.linspace(0, data.shape[0] - 1, ncols, dtype=int)
+    vmin = float(np.percentile(data, 2.0))
+    vmax = float(np.percentile(data, 98.0))
+    fig, axes = plt.subplots(1, ncols, figsize=(2.5 * ncols, 3.0), squeeze=False)
+    for ax, k in zip(axes[0], idx, strict=True):
+        im = ax.imshow(data[k], origin="lower", cmap=cmap, vmin=vmin, vmax=vmax)
+        ax.set_title(f"{title_prefix} k={k}")
+        ax.set_xticks([])
+        ax.set_yticks([])
+    fig.colorbar(im, ax=axes.ravel().tolist(), fraction=0.025, pad=0.02)
+    fig.tight_layout()
+    _savefig(fig, path, dpi)
+
+
 def generate_all_plots_and_movies(
     cfg: PlotConfig,
     run_dir: Path,
@@ -98,18 +135,31 @@ def generate_all_plots_and_movies(
     plt.legend()
     _savefig(fig, plots / "metrics_energy_true_vs_pred.png", cfg.dpi)
 
+    _write_contact_sheet(rollout.fields_true[:, 0], plots / "rollout_n_true_contact.png", "n true", cfg.dpi)
+    _write_contact_sheet(rollout.fields_pred[:, 0], plots / "rollout_n_pred_contact.png", "n pred", cfg.dpi)
+
     frames = []
     n_true = rollout.fields_true[:, 0]
     n_pred = rollout.fields_pred[:, 0]
+    vmin = float(np.percentile(np.concatenate([n_true.reshape(-1), n_pred.reshape(-1)]), 2.0))
+    vmax = float(np.percentile(np.concatenate([n_true.reshape(-1), n_pred.reshape(-1)]), 98.0))
+    diff_lim = float(np.percentile(np.abs((n_pred - n_true).reshape(-1)), 98.0))
     for k in range(n_true.shape[0]):
-        fig, axes = plt.subplots(1, 2, figsize=(8, 3.5))
-        vmin = float(min(np.min(n_true[k]), np.min(n_pred[k])))
-        vmax = float(max(np.max(n_true[k]), np.max(n_pred[k])))
+        fig, axes = plt.subplots(1, 3, figsize=(11, 3.5))
         axes[0].imshow(n_true[k], origin="lower", cmap="viridis", vmin=vmin, vmax=vmax)
         im1 = axes[1].imshow(n_pred[k], origin="lower", cmap="viridis", vmin=vmin, vmax=vmax)
+        im2 = axes[2].imshow(
+            n_pred[k] - n_true[k],
+            origin="lower",
+            cmap="coolwarm",
+            vmin=-diff_lim,
+            vmax=diff_lim,
+        )
         axes[0].set_title("n true")
         axes[1].set_title("n pred")
-        fig.colorbar(im1, ax=axes.ravel().tolist(), fraction=0.03)
+        axes[2].set_title("pred - true")
+        fig.colorbar(im1, ax=axes[:2].ravel().tolist(), fraction=0.03, pad=0.02)
+        fig.colorbar(im2, ax=[axes[2]], fraction=0.046, pad=0.04)
         fig.tight_layout()
 
         fig.canvas.draw()

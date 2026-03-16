@@ -13,6 +13,7 @@ build/
 
 # outputs (keep small fixtures only)
 erd_fipy/scripts/outputs/
+erd_fipy/outputs/
 *.h5
 *.npz
 

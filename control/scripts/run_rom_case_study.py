@@ -58,7 +58,7 @@ def load_source_initial_state(source_run_dir: Path) -> tuple[np.ndarray, np.ndar
 def summarize(base: dict[str, list[float]], ctrl: dict[str, list[float]]) -> dict[str, float]:
     """Compute aggregate before/after metrics and relative deltas."""
     out: dict[str, float] = {}
-    for key in ("E_wob", "L_w", "sigma_r2", "P_ctrl"):
+    for key in ("J_prof", "E_low", "L_w", "sigma_r2", "P_ctrl"):
         b = float(np.mean(base[key]))
         c = float(np.mean(ctrl[key]))
         out[f"mean_{key}_baseline"] = b
@@ -94,8 +94,8 @@ def main() -> None:
     x_c = np.empty((n_steps + 1, x0.size), dtype=float)
     u_b = np.empty((n_steps, 5), dtype=float)
     u_c = np.empty((n_steps, 5), dtype=float)
-    m_b = {"E_wob": [], "L_w": [], "sigma_r2": [], "P_ctrl": []}
-    m_c = {"E_wob": [], "L_w": [], "sigma_r2": [], "P_ctrl": []}
+    m_b = {"J_prof": [], "E_low": [], "L_w": [], "sigma_r2": [], "P_ctrl": []}
+    m_c = {"J_prof": [], "E_low": [], "L_w": [], "sigma_r2": [], "P_ctrl": []}
 
     a_b[0] = a0
     a_c[0] = a0
@@ -108,8 +108,9 @@ def main() -> None:
         u_b[k] = u_open
         a_b[k + 1] = controller._predict_step(a_b[k], u_open)
         x_b[k + 1] = controller.lift(a_b[k + 1])
-        ew, lw, sr2, pc = controller._metrics_from_n(controller._decode_n(x_b[k + 1]), u_open)
-        m_b["E_wob"].append(ew)
+        jp, el, lw, sr2, pc = controller._metrics_from_n(controller._decode_n(x_b[k + 1]), u_open)
+        m_b["J_prof"].append(jp)
+        m_b["E_low"].append(el)
         m_b["L_w"].append(lw)
         m_b["sigma_r2"].append(sr2)
         m_b["P_ctrl"].append(pc)
@@ -119,8 +120,9 @@ def main() -> None:
         u_c[k] = u
         a_c[k + 1] = controller._predict_step(a_c[k], u)
         x_c[k + 1] = controller.lift(a_c[k + 1])
-        ew, lw, sr2, pc = controller._metrics_from_n(controller._decode_n(x_c[k + 1]), u)
-        m_c["E_wob"].append(ew)
+        jp, el, lw, sr2, pc = controller._metrics_from_n(controller._decode_n(x_c[k + 1]), u)
+        m_c["J_prof"].append(jp)
+        m_c["E_low"].append(el)
         m_c["L_w"].append(lw)
         m_c["sigma_r2"].append(sr2)
         m_c["P_ctrl"].append(pc)
@@ -146,7 +148,7 @@ def main() -> None:
 
     fig, ax = plt.subplots(2, 2, figsize=(10, 6))
     ax = ax.reshape(-1)
-    for i, key in enumerate(("E_wob", "L_w", "sigma_r2", "P_ctrl")):
+    for i, key in enumerate(("J_prof", "E_low", "L_w", "sigma_r2")):
         ax[i].plot(t[1:], m_b[key], label="baseline")
         ax[i].plot(t[1:], m_c[key], label="controlled")
         ax[i].set_title(key)

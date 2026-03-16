@@ -1,4 +1,10 @@
-"""Held-out ROM rollout helpers for model validation."""
+"""Held-out ROM rollout helpers for model validation.
+
+The rollout helpers intentionally keep the ground-truth side in the original
+field space. Predicted states come from the reduced-order model and are lifted
+back through the POD basis, but ``fields_true`` should remain the raw held-out
+plant snapshots rather than a low-rank reconstruction of them.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +15,7 @@ import numpy as np
 
 from .pod import reconstruct
 from .sindy_model import rollout_controlled
-from .snapshot import SnapshotLayout, state_vec_to_fields
+from .snapshot import SnapshotLayout, fields_to_state_vec, state_vec_to_fields
 
 
 @dataclass(frozen=True)
@@ -46,6 +52,7 @@ def rollout_one(
     state_clip: float = 50.0,
     mean_state: Optional[np.ndarray] = None,
     start_idx: int = 0,
+    fields_traj: Optional[np.ndarray] = None,
 ) -> RolloutResult:
     """Run one controlled rollout and reconstruct field predictions.
 
@@ -60,6 +67,9 @@ def rollout_one(
         state_clip: Absolute bound applied to predicted reduced coefficients.
         mean_state: Optional POD centering vector.
         start_idx: Trajectory index used as rollout initial condition.
+        fields_traj: Optional raw full-order field trajectory aligned with
+            ``A_traj``. When supplied, this becomes the source of truth for
+            field-space validation and saved "true" movies.
 
     Returns:
         :class:`RolloutResult` containing reduced and lifted trajectories.
@@ -76,11 +86,14 @@ def rollout_one(
 
     A_pred = rollout_controlled(model, a0=A_true[0], u_seq=U_used, dt=dt, state_clip=state_clip)
 
-    q_true = reconstruct(U_basis, A_true.T, mean_state=mean_state).T
     q_pred = reconstruct(U_basis, A_pred.T, mean_state=mean_state).T
-
-    fields_true = np.stack([state_vec_to_fields(x, layout) for x in q_true], axis=0)
     fields_pred = np.stack([state_vec_to_fields(x, layout) for x in q_pred], axis=0)
+    if fields_traj is None:
+        q_true = reconstruct(U_basis, A_true.T, mean_state=mean_state).T
+        fields_true = np.stack([state_vec_to_fields(x, layout) for x in q_true], axis=0)
+    else:
+        fields_true = np.asarray(fields_traj[start_idx : end_idx + 1], dtype=float)
+        q_true = np.stack([fields_to_state_vec(x, layout) for x in fields_true], axis=0)
 
     return RolloutResult(
         A_true=A_true,

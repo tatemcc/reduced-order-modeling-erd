@@ -144,16 +144,18 @@ base_cfg = manifest["base_config"]
 base_cfg.setdefault("control", {})
 base_cfg["control"]["H"] = 8
 base_cfg["control"]["N_shoot"] = 96
+base_cfg["control"]["shoot_segments"] = 4
+base_cfg["control"]["shoot_seg_len"] = 2
 base_cfg["control"]["rate_penalty"] = 1.0
 base_cfg["control"]["weights"] = {
-    "w_wob_abs": 5.0e10,
-    "w_wob_growth": 2.0e11,
-    "w_wall": 0.4,
-    "w_coh": 0.3,
-    "w_coh_growth": 0.6,
-    "w_wall_slope": 0.15,
-    "w_pow": 0.02,
-    "w_rate": 0.15,
+    "w_j": 18.0,
+    "w_j_growth": 36.0,
+    "w_e": 4.0e4,
+    "w_e_growth": 8.0e4,
+    "w_l": 1.0,
+    "w_sigma": 6.0,
+    "w_u": 0.02,
+    "w_delta_u": 0.15,
 }
 base_cfg.setdefault("output", {})
 base_cfg["output"]["outputs_root"] = outputs_root
