@@ -446,6 +446,78 @@ def animate_moving_dashes(q_true, q_pred, output_path, fps=DEFAULT_FPS):
     print(f"Saved moving dashes animation to {output_path}")
 
 
+def animate_amplitudes(
+    A_true: np.ndarray,
+    A_pred: np.ndarray,
+    output_path: Path,
+    fps: int = DEFAULT_FPS,
+) -> None:
+    """
+    Animate POD mode amplitudes over time using bar charts.
+
+    Creates a side-by-side animation showing the temporal evolution of
+    the true vs. predicted POD coefficients.
+
+    Parameters
+    ----------
+    A_true : np.ndarray
+        Ground truth coefficients of shape (T, r).
+    A_pred : np.ndarray
+        Predicted coefficients of shape (T, r).
+    output_path : Path
+        Destination path for the .mp4 file.
+    fps : int
+        Frames per second for the animation.
+    """
+    T, r = A_true.shape
+    if A_pred.shape != (T, r):
+        raise ValueError("A_true and A_pred must have the same shape.")
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
+    mode_indices = np.arange(r)
+
+    # Determine shared y-axis limits
+    ymin = min(A_true.min(), A_pred.min())
+    ymax = max(A_true.max(), A_pred.max())
+    padding = (ymax - ymin) * 0.1
+    ymin -= padding
+    ymax += padding
+
+    # True amplitudes
+    ax_true = axes[0]
+    ax_true.set_title("True Amplitudes")
+    ax_true.set_xlabel("Mode Index")
+    ax_true.set_ylabel("Amplitude")
+    ax_true.set_ylim(ymin, ymax)
+    ax_true.set_xticks(mode_indices)
+    bar_true = ax_true.bar(mode_indices, A_true[0])
+
+    # Predicted amplitudes
+    ax_pred = axes[1]
+    ax_pred.set_title("Predicted Amplitudes")
+    ax_pred.set_xlabel("Mode Index")
+    ax_pred.set_ylim(ymin, ymax)
+    ax_pred.set_xticks(mode_indices)
+    bar_pred = ax_pred.bar(mode_indices, A_pred[0])
+
+    title = fig.suptitle("Time: 0")
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    def update(frame):
+        title.set_text(f"Time: {frame}")
+        for i, b in enumerate(bar_true):
+            b.set_height(A_true[frame, i])
+        for i, b in enumerate(bar_pred):
+            b.set_height(A_pred[frame, i])
+        return list(bar_true) + list(bar_pred) + [title]
+
+    ani = animation.FuncAnimation(fig, update, frames=T, blit=True, interval=1000 / fps)
+    writer = "ffmpeg" if output_path.suffix == ".mp4" else "pillow"
+    ani.save(output_path, writer=writer, fps=fps)
+    plt.close(fig)
+    print(f"Saved amplitude animation to {output_path}")
+
+
 def plot_pod_basis(
     mode: np.ndarray,
     output_path: Path,

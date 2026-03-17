@@ -13,6 +13,7 @@ from burgers_rom.plotting import (
     animate_vorticity,
     animate_streamlines,
     animate_moving_dashes,
+    animate_amplitudes,
     plot_pod_basis,
 )
 
@@ -181,7 +182,7 @@ def main():
         "--style",
         type=str,
         default="channels",
-        choices=["channels", "quiver", "vorticity", "streamlines", "dashes", "all"],
+        choices=["channels", "quiver", "vorticity", "streamlines", "dashes", "amplitudes", "all"],
         help="Animation style to generate.",
     )
     parser.add_argument("--fps", type=int, default=DEFAULT_FPS, help="Frames per second.")
@@ -245,6 +246,15 @@ def main():
             q_true,
             q_pred,
             output_dir / f"{timestamp}_{args.run_id}_truevpred_streamlines.{args.format}",
+            fps=args.fps,
+        )
+
+    if args.style in ["amplitudes", "all"]:
+        print("Generating amplitude animation...")
+        animate_amplitudes(
+            A_true,
+            A_pred,
+            output_dir / f"{timestamp}_{args.run_id}_truevpred_amplitudes.{args.format}",
             fps=args.fps,
         )
 

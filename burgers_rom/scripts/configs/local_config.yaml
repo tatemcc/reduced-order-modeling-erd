@@ -25,12 +25,12 @@ deriv:
 sindy:
   poly_order: 2
   include_bias: false
-  # optimizer: sr3
-  # optimizer_params:
-  #   threshold: 0.1
-  #   nu: 1.0
-  #   max_iter: 20
-  #   normalize_columns: true
+  optimizer: sr3
+  optimizer_params:
+    threshold: 0.1
+    nu: 0.817776
+    max_iter: 5000
+    normalize_columns: true
   # optimizer: stlsq
   # optimizer_params:
   #   threshold: 0
@@ -46,13 +46,13 @@ sindy:
   # optimizer_params:
   #   kappa: null
   #   normalize_columns: true
-  optimizer: trappingsr3
-  optimizer_params:
-    eta: 14
-    threshold: 0.04
-    alpha: 10
-    max_iter: 80
-    gamma: -0.1
-    normalize_columns: true
+  # optimizer: trappingsr3
+  # optimizer_params:
+  #   eta: 14
+  #   threshold: 0.04
+  #   alpha: 10
+  #   max_iter: 80
+  #   gamma: -0.1
+  #   normalize_columns: true
   constrain_energy: false
 outputs_dir: outputs
