@@ -164,6 +164,42 @@ class SINDyConfig:
 
 
 @dataclass(frozen=True)
+class PlotConfig:
+    """
+    Configuration for generating figures and movies for a run.
+    """
+    enabled: bool = True
+
+    figures_subdir: str = "figures"
+    movies_subdir: str = "movies"
+
+    dpi: int = 150
+
+    # Basis visualization
+    basis_n_modes: int = 8
+    basis_cmap: str = "viridis"
+
+    # Rollout visualization
+    rollout_cmap: str = "viridis"
+    movie_fps: int = 15
+    movie_every: int = 1
+    movie_components: Optional[list[int]] = None  # None means all components
+
+    # field error plots
+    metrics_curves: bool = True
+
+    # Coefficient diagnostics
+    coeff_time_series: bool = True
+    coeff_pair_phase: bool = True
+    coeff_pair_max_pairs: int = 45  # caps number of (i,j) phase plots saved
+
+    # Optional sympy labels
+    sympy_labels: bool = False
+    sympy_label_style: Literal["a_i", "x_i"] = "a_i"
+
+
+
+@dataclass(frozen=True)
 class RunConfig:
     """
     Top-level configuration for a single pipeline run.
@@ -194,6 +230,8 @@ class RunConfig:
     pod: PODConfig = PODConfig()
     deriv: DerivConfig = DerivConfig()
     sindy: SINDyConfig = SINDyConfig()
+    rollout: RolloutConfig = RolloutConfig()
+    plots: PlotConfig = PlotConfig()
 
     outputs_dir: str | None = OUTPUTS_DIR.as_posix()
 
