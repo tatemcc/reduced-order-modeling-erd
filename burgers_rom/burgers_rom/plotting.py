@@ -453,10 +453,10 @@ def animate_amplitudes(
     fps: int = DEFAULT_FPS,
 ) -> None:
     """
-    Animate POD mode amplitudes over time using bar charts.
+    Animate POD mode amplitudes over time using a grouped bar chart.
 
-    Creates a side-by-side animation showing the temporal evolution of
-    the true vs. predicted POD coefficients.
+    Creates a single animation showing the temporal evolution of
+    the true vs. predicted POD coefficients side-by-side for each mode.
 
     Parameters
     ----------
@@ -473,8 +473,10 @@ def animate_amplitudes(
     if A_pred.shape != (T, r):
         raise ValueError("A_true and A_pred must have the same shape.")
 
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
     mode_indices = np.arange(r)
+    width = 0.35  # the width of the bars
+
+    fig, ax = plt.subplots(1, 1, figsize=(12, 6))
 
     # Determine shared y-axis limits
     ymin = min(A_true.min(), A_pred.min())
@@ -483,25 +485,24 @@ def animate_amplitudes(
     ymin -= padding
     ymax += padding
 
-    # True amplitudes
-    ax_true = axes[0]
-    ax_true.set_title("True Amplitudes")
-    ax_true.set_xlabel("Mode Index")
-    ax_true.set_ylabel("Amplitude")
-    ax_true.set_ylim(ymin, ymax)
-    ax_true.set_xticks(mode_indices)
-    bar_true = ax_true.bar(mode_indices, A_true[0])
+    # Initial bar plots
+    bar_true = ax.bar(
+        mode_indices - width / 2, A_true[0], width, label="True", color="tab:blue"
+    )
+    bar_pred = ax.bar(
+        mode_indices + width / 2, A_pred[0], width, label="Predicted", color="tab:orange"
+    )
 
-    # Predicted amplitudes
-    ax_pred = axes[1]
-    ax_pred.set_title("Predicted Amplitudes")
-    ax_pred.set_xlabel("Mode Index")
-    ax_pred.set_ylim(ymin, ymax)
-    ax_pred.set_xticks(mode_indices)
-    bar_pred = ax_pred.bar(mode_indices, A_pred[0])
+    # Add some text for labels, title and axes ticks
+    ax.set_ylabel("Amplitude")
+    ax.set_title("POD Mode Amplitudes")
+    ax.set_xticks(mode_indices)
+    ax.set_xlabel("Mode Index")
+    ax.legend()
+    ax.set_ylim(ymin, ymax)
 
     title = fig.suptitle("Time: 0")
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
 
     def update(frame):
         title.set_text(f"Time: {frame}")
