@@ -230,7 +230,8 @@ class RunConfig:
     pod: PODConfig = PODConfig()
     deriv: DerivConfig = DerivConfig()
     sindy: SINDyConfig = SINDyConfig()
-    rollout: RolloutConfig = RolloutConfig()
+    # rollout: RolloutConfig = RolloutConfig()
+    # !! above bandaidpatch
     plots: PlotConfig = PlotConfig()
 
     outputs_dir: str | None = OUTPUTS_DIR.as_posix()
