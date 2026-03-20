@@ -86,9 +86,7 @@ def config_hash(config_dict: Dict[str, Any]) -> str:
     str
         Short hexadecimal hash string identifying the configuration.
     """
-    payload = json.dumps(
-        config_dict, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    payload = json.dumps(config_dict, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()[:12]
 
 

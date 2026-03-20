@@ -19,7 +19,6 @@ from burgers_rom.config import (
     DataConfig,
     DerivConfig,
     PODConfig,
-    RolloutConfig,
     RunConfig,
     SINDyConfig,
 )
@@ -49,37 +48,10 @@ def _load_yaml(path: Path) -> Dict[str, Any]:
     return data
 
 
-def _maybe_get(d: Dict[str, Any], key: str, default: Any = None, raise_if_missing: bool = True) -> Any:
-    """
-    Return d[key] if present else default.
-
-    Parameters
-    ----------
-    d : dict
-        Dictionary to read.
-    key : str
-        Key to lookup.
-    default : Any
-        Fallback value.
-
-    Returns
-    -------
-    Any
-        Value.
-    """
-    if key in d:
-        return d[key]
-    elif not raise_if_missing:
-        print(f"Couldn't find {key} in config, using default={default}")
-        return default
-    else:
-        raise ValueError(f"Couldn't find {key} in config")
-
-
+# Using dictionary unpacking to populate config objects with fallbacks instead of raising errors
 def load_run_config(path: Optional[Path]) -> RunConfig:
     """
     Load RunConfig from YAML or return default RunConfig if path is None.
-
     Parameters
     ----------
     path : Path, optional
@@ -95,61 +67,16 @@ def load_run_config(path: Optional[Path]) -> RunConfig:
 
     cfg = _load_yaml(path)
 
-    data_d = cfg.get("data", {})
-    pod_d = cfg.get("pod", {})
-    deriv_d = cfg.get("deriv", {})
-    sindy_d = cfg.get("sindy", {})
-    rollout_d = cfg.get("rollout", {})
+    # Load sub-configs using unpacking to respect dataclass defaults
+    data = DataConfig(**cfg.get("data", {}))
+    pod = PODConfig(**cfg.get("pod", {}))
+    deriv = DerivConfig(**cfg.get("deriv", {}))
+    sindy = SINDyConfig(**cfg.get("sindy", {}))
 
-    data = DataConfig(
-        equation=_maybe_get(data_d, "equation"),
-        structure=_maybe_get(data_d, "structure"),
-        resolution=_maybe_get(data_d, "resolution"),
-        split=_maybe_get(data_d, "split", "train"),
-        n_trajectories=_maybe_get(data_d, "n_trajectories"),
-        trajectory_ids=_maybe_get(data_d, "trajectory_ids"),
-        data_path=_maybe_get(data_d, "data_path"),
-        download_if_missing=_maybe_get(data_d, "download_if_missing"),
-        lookback=_maybe_get(data_d, "lookback"),
-        rollout=_maybe_get(data_d, "rollout"),
-        squeeze_lookback_dim=_maybe_get(data_d, "squeeze_lookback_dim"),
-        time_stride=_maybe_get(data_d, "time_stride"),
-        time_limit=_maybe_get(data_d, "time_limit"),
-    )
+    # Filter top-level arguments to avoid passing sub-config dicts to RunConfig
+    run_kwargs = {k: v for k, v in cfg.items() if k not in ["data", "pod", "deriv", "sindy"]}
 
-    pod = PODConfig(
-        rank=_maybe_get(pod_d, "rank"),
-        energy_fraction=_maybe_get(pod_d, "energy_fraction"),
-        center=_maybe_get(pod_d, "center"),
-    )
-
-    deriv = DerivConfig(
-        method=_maybe_get(deriv_d, "method"),
-        scheme=_maybe_get(deriv_d, "scheme"),
-    )
-
-    sindy = SINDyConfig(
-        poly_order=_maybe_get(sindy_d, "poly_order"),
-        include_bias=_maybe_get(sindy_d, "include_bias"),
-        optimizer=_maybe_get(sindy_d, "optimizer"),
-        sparsity=_maybe_get(sindy_d, "sparsity"),
-        constrain_energy=_maybe_get(sindy_d, "constrain_energy"),
-    )
-
-    rollout = RolloutConfig(
-        horizon_steps=_maybe_get(rollout_d, "horizon_steps"),
-    )
-
-    return RunConfig(
-        name=_maybe_get(cfg, "name"),
-        seed=_maybe_get(cfg, "seed"),
-        data=data,
-        pod=pod,
-        deriv=deriv,
-        sindy=sindy,
-        rollout=rollout,
-        outputs_dir=_maybe_get(cfg, "outputs_dir"),
-    )
+    return RunConfig(data=data, pod=pod, deriv=deriv, sindy=sindy, **run_kwargs)
 
 
 def build_argparser() -> argparse.ArgumentParser:

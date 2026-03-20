@@ -14,7 +14,7 @@ Primary design choices:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Dict, Any
 
 import numpy as np
 import pysindy as ps
@@ -38,6 +38,7 @@ class SINDyFitResult:
     n_features : int
         Number of library features.
     """
+
     model: ps.SINDy
     feature_names: List[str]
     coefficient_matrix: np.ndarray
@@ -70,8 +71,7 @@ def build_library(
 
 
 def build_optimizer(
-    optimizer_name: str,
-    optimizer_kwargs: dict,
+    optimizer_name: str, params: Dict[str, Any], n_targets: int
 ) -> ps.BaseOptimizer:
     """
     Construct a PySINDy optimizer.
@@ -79,23 +79,75 @@ def build_optimizer(
     Parameters
     ----------
     optimizer_name : str
-        'stlsq' or 'sr3'.
-    optimizer_kwargs : dict
-        Optimizer-specific kwargs, e.g. sparsity threshold.
+        'stlsq', 'sr3', 'ssr', or 'frols'.
+    params : dict
+        Optimizer parameters.
+    n_target : int
+        Number of targets for TrappingSR3.
 
     Returns
     -------
     ps.BaseOptimizer
         Configured optimizer.
     """
+    normalize_columns = params.get("normalize_columns", True)
+    max_iter = params.get("max_iter", 20)
 
     optimizer_kwargs = {} if optimizer_kwargs is None else optimizer_kwargs
     if optimizer_name == "stlsq":
-        return ps.STLSQ(**optimizer_kwargs)
-    if optimizer_name == "sr3":
-        return ps.SR3(**optimizer_kwargs) # TODO fix
-
-    raise ValueError(f"Unsupported optimizer: {optimizer_name}")
+        threshold = params.get("threshold", 0.1)
+        alpha = params.get("alpha", 0.05)
+        return ps.STLSQ(
+            threshold=threshold,
+            alpha=alpha,
+            max_iter=max_iter,
+            normalize_columns=normalize_columns,
+        )
+    elif optimizer_name == "sr3":
+        threshold = params.get("threshold", 0.1)
+        nu = params.get("nu", 1.0)
+        # SR3 often needs more iterations
+        max_iter_sr3 = params.get("max_iter", 30)
+        optimizer = ps.SR3(
+            relax_coeff_nu=nu,
+            regularizer="L0",
+            max_iter=max_iter_sr3,
+            normalize_columns=normalize_columns,
+        )
+        optimizer.threshold = threshold
+        return optimizer
+    elif optimizer_name == "ssr":
+        alpha = params.get("alpha", 0.05)
+        return ps.SSR(
+            alpha=alpha,
+            max_iter=max_iter,
+            normalize_columns=normalize_columns,
+        )
+    elif optimizer_name == "frols":
+        kappa = params.get("kappa", None)
+        return ps.FROLS(
+            kappa=kappa,
+            normalize_columns=normalize_columns,
+        )
+    # TODO: choose better default values
+    elif optimizer_name == "trappingsr3":
+        return ps.TrappingSR3(
+            _n_tgts=n_targets,
+            reg_weight_lam=params.get("threshold", 0.1),  # Mapping threshold to lambda
+            eta=params.get("eta", 1.0e5),
+            alpha=params.get("alpha", 1e20),
+            beta=params.get("beta", 1e20),
+            gamma=params.get("gamma", -0.1),
+            tol_m=params.get("tol_m", 1e-5),
+            alpha_A=params.get("alpha_A", None),
+            alpha_m=params.get("alpha_m", None),
+            regularizer=params.get("regularizer", "l2"),
+            eps_solver=params.get("eps_solver", 1e-7),
+            normalize_columns=normalize_columns,
+            max_iter=max_iter,
+        )
+    else:
+        raise ValueError(f"Unsupported optimizer: {optimizer_name}")
 
 
 def fit_sindy_on_coeffs(
@@ -105,7 +157,7 @@ def fit_sindy_on_coeffs(
     poly_order: int,
     include_bias: bool,
     optimizer_name: str,
-    optimizer_kwargs: dict,
+    optimizer_params: Dict[str, Any],
     feature_names: Optional[List[str]] = None,
 ) -> SINDyFitResult:
     """
@@ -124,9 +176,9 @@ def fit_sindy_on_coeffs(
     include_bias : bool
         Include constant feature in library.
     optimizer_name : str
-        Optimizer name: 'stlsq' or 'sr3'.
-    optimizer_kwargs : dict
-        Optimizer-specific kwargs, e.g. sparsity threshold.
+        Optimizer name: 'stlsq', 'sr3', 'ssr', or 'frols'.
+    optimizer_params : dict
+        Parameters for the optimizer.
     feature_names : list of str, optional
         Custom feature names for state variables. If None, defaults are used.
 
@@ -151,7 +203,7 @@ def fit_sindy_on_coeffs(
     Xdot = dA_dt.T
 
     lib = build_library(poly_order=poly_order, include_bias=include_bias)
-    opt = build_optimizer(optimizer_name=optimizer_name, optimizer_kwargs=optimizer_kwargs)
+    opt = build_optimizer(optimizer_name=optimizer_name, params=optimizer_params, n_targets=r)
 
     if feature_names is None:
         feature_names = [f"a{i}" for i in range(r)]
@@ -159,7 +211,7 @@ def fit_sindy_on_coeffs(
     model = ps.SINDy(
         feature_library=lib,
         optimizer=opt,
-        differentiation_method=None # we did the derivatives ourselves
+        differentiation_method=None,  # we did the derivatives ourselves
     )
     model.fit(X, t=dt, x_dot=Xdot)
 

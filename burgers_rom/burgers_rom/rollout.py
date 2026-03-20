@@ -39,6 +39,7 @@ class RolloutResult:
     fields_pred : np.ndarray
         Predicted fields of shape (T, C, ny, nx).
     """
+
     A_true: np.ndarray
     A_pred: np.ndarray
     q_true: np.ndarray
@@ -125,7 +126,8 @@ def rollout_one(
     a0 = A_true[0]
 
     t = np.arange(horizon_steps + 1, dtype=float) * dt
-    A_pred = model.simulate(a0, t=t)
+    # only supported options for integrator are solve_ivp (default) and odeint
+    A_pred = model.simulate(a0, t=t, integrator="odeint")
     A_pred = np.asarray(A_pred)
 
     if A_pred.shape != A_true.shape:
@@ -134,8 +136,12 @@ def rollout_one(
     q_true_mat = reconstruct_from_pod(U, A_true.T, mean_state=mean_state).T
     q_pred_mat = reconstruct_from_pod(U, A_pred.T, mean_state=mean_state).T
 
-    fields_true = np.stack([state_vec_to_fields(q_true_mat[i], layout) for i in range(q_true_mat.shape[0])], axis=0)
-    fields_pred = np.stack([state_vec_to_fields(q_pred_mat[i], layout) for i in range(q_pred_mat.shape[0])], axis=0)
+    fields_true = np.stack(
+        [state_vec_to_fields(q_true_mat[i], layout) for i in range(q_true_mat.shape[0])], axis=0
+    )
+    fields_pred = np.stack(
+        [state_vec_to_fields(q_pred_mat[i], layout) for i in range(q_pred_mat.shape[0])], axis=0
+    )
 
     return RolloutResult(
         A_true=A_true,

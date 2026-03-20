@@ -1,0 +1,7 @@
+- WIP readme
+- To start a run,
+    - Run `uv pip install -e .`
+    - Run `uv run python3 scripts/run_one.py --config [path to .yaml config file]`
+- Run the animation script with the argument `--run_id` and the ID of the run you want to plot.
+    - The script expects the run data to be in `romerd/burgers_rom/outputs/burgers/`.
+    - Use `--style` to select the style of animation, or `--style all` to generate a plot for each supported style.
