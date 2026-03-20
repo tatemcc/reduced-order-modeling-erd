@@ -10,13 +10,13 @@ data:
   trajectory_ids: null
   data_path: null
   download_if_missing: false
-  lookback: 20
-  rollout: 10
+  lookback: 199
+  rollout: 198
   squeeze_lookback_dim: false
   time_stride: 1
   time_limit: null
 pod:
-  rank: 20
+  rank: 8
   energy_fraction: null
   center: true
 deriv:
@@ -25,12 +25,12 @@ deriv:
 sindy:
   poly_order: 2
   include_bias: false
-  optimizer: sr3
-  optimizer_params:
-    threshold: 0.1
-    nu: 0.817776
-    max_iter: 5000
-    normalize_columns: true
+  # optimizer: sr3
+  # optimizer_params:
+  #   threshold: 0.1
+  #   nu: 0.808
+  #   max_iter: 5000
+  #   normalize_columns: true
   # optimizer: stlsq
   # optimizer_params:
   #   threshold: 0
@@ -46,13 +46,13 @@ sindy:
   # optimizer_params:
   #   kappa: null
   #   normalize_columns: true
-  # optimizer: trappingsr3
-  # optimizer_params:
-  #   eta: 14
-  #   threshold: 0.04
-  #   alpha: 10
-  #   max_iter: 80
-  #   gamma: -0.1
-  #   normalize_columns: true
+  optimizer: trappingsr3
+  optimizer_params:
+    eta: 14
+    threshold: 0.04
+    alpha: 10
+    max_iter: 5000
+    gamma: -0.1
+    normalize_columns: true
   constrain_energy: false
 outputs_dir: outputs

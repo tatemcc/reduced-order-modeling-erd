@@ -102,7 +102,9 @@ def run(
         resolution=cfg.data.resolution,
         base_path=cfg.data.data_path,
         lookback=cfg.data.lookback,
-        rollout=cfg.data.rollout,
+        # rollout=cfg.data.rollout
+        rollout=1,
+        # !! caution: bandaid patch
         squeeze_lookback_dim=cfg.data.squeeze_lookback_dim,
         download=cfg.data.download_if_missing,
     )
