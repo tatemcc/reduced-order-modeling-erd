@@ -93,7 +93,7 @@ def build_optimizer(
     normalize_columns = params.get("normalize_columns", True)
     max_iter = params.get("max_iter", 20)
 
-    optimizer_kwargs = {} if optimizer_kwargs is None else optimizer_kwargs
+    optimizer_params = {} if params is None else params
     if optimizer_name == "stlsq":
         threshold = params.get("threshold", 0.1)
         alpha = params.get("alpha", 0.05)

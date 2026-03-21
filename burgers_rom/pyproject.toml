@@ -11,6 +11,7 @@ dependencies = [
     "pyyaml",
     "dynabench",
     "cvxpy>=1.7.5",
+    "imageio>=2.9.0",
 ]
 
 [tool.setuptools]
