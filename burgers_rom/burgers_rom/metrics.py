@@ -42,6 +42,8 @@ class EnergyCurves:
 
     Energy definition for Burgers (2 components):
         E(t) = 0.5 * integral (u^2 + v^2) dA
+    Energy definition for Burgers:
+        E(t) = 0.5 * integral |u|^2 dA
 
     Attributes
     ----------
@@ -137,11 +139,13 @@ def burgers_energy(
     Compute Burgers kinetic-energy-like quantity per time step.
 
     E(t) = 0.5 * integral (u^2 + v^2) dA
+    E(t) = 0.5 * integral |u|^2 dA
 
     Parameters
     ----------
     fields : np.ndarray
         Fields, shape (T, 2, ny, nx).
+        Fields, shape (T, C, ny, nx), where C is 1 or 2.
     dx : float
         Grid spacing in x.
     dy : float
@@ -153,8 +157,8 @@ def burgers_energy(
         Energy curve, shape (T,).
     """
     f = np.asarray(fields)
-    if f.ndim != 4 or f.shape[1] != 2:
-        raise ValueError("Expected fields shape (T, 2, ny, nx)")
+    if f.ndim != 4 or f.shape[1] not in [1, 2]:
+        raise ValueError("Expected fields shape (T, C, ny, nx) with C in [1, 2]")
     if dx <= 0 or dy <= 0:
         raise ValueError("dx and dy must be positive")
 
@@ -171,6 +175,7 @@ def compute_curves(
     fields_pred: np.ndarray,
     dx: float,
     dy: float,
+    equation: str,
 ) -> Tuple[ErrorCurves, EnergyCurves]:
     """
     Compute error and energy curves for one rollout.
@@ -183,12 +188,16 @@ def compute_curves(
         Predicted coefficients, shape (T, r).
     fields_true : np.ndarray
         True fields, shape (T, 2, ny, nx).
+        True fields, shape (T, C, ny, nx).
     fields_pred : np.ndarray
         Predicted fields, shape (T, 2, ny, nx).
+        Predicted fields, shape (T, C, ny, nx).
     dx : float
         Grid spacing in x.
     dy : float
         Grid spacing in y.
+    equation : str
+        Name of the equation.
 
     Returns
     -------
@@ -198,8 +207,12 @@ def compute_curves(
     c_mse = coefficient_mse(A_true, A_pred)
     f_l2, f_rel = field_l2_errors(fields_true, fields_pred, dx=dx, dy=dy)
 
-    e_true = burgers_energy(fields_true, dx=dx, dy=dy)
-    e_pred = burgers_energy(fields_pred, dx=dx, dy=dy)
+    if equation == "burgers":
+        e_true = burgers_energy(fields_true, dx=dx, dy=dy)
+        e_pred = burgers_energy(fields_pred, dx=dx, dy=dy)
+    else:
+        e_true = np.array([])
+        e_pred = np.array([])
 
     return (
         ErrorCurves(coeff_mse=c_mse, field_l2=f_l2, field_rel_l2=f_rel),

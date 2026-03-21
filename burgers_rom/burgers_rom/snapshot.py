@@ -134,8 +134,9 @@ def build_snapshot_matrix(
         raise ValueError("Expected trajectories shape (n_traj, T, C, ny, nx)")
 
     n_traj, T, C, ny, nx = traj.shape
-    if C != 2:
-        raise ValueError(f"Expected Burgers components C=2, got C={C}")
+    # !! bandaid patch comment out ; should not be hardcoded to just burgers
+    # if C != 2:
+    #     raise ValueError(f"Expected Burgers components C=2, got C={C}")
 
     layout = SnapshotLayout(ny=ny, nx=nx, n_components=C)
 

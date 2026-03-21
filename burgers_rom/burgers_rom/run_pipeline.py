@@ -183,6 +183,7 @@ def run(
         fields_pred=rollout.fields_pred,
         dx=dx,
         dy=dy,
+        equation=cfg.data.equation,
     )
     aggregates = summarize_aggregates(err, energy)
 

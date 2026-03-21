@@ -205,67 +205,92 @@ def main():
         return
 
     # Reshape
-    q_true, layout = reshape_trajectory(q_true_flat, n_components=2)
-    q_pred, _ = reshape_trajectory(q_pred_flat, n_components=2)
+    match args.equation:
+        case "advection":
+            n_components = 1
+        case "burgers":
+            n_components = 2
+        case "gasdynamics":
+            n_components = 4
+        case "kuramotosivashinsky":
+            n_components = 1
+        case "reactiondiffusion":
+            n_components = 2
+        case "wave":
+            n_components = 1
+        case _:
+            raise Exception("Unrecognized args.equation")
+    q_true, layout = reshape_trajectory(q_true_flat, n_components=n_components)
+    q_pred, _ = reshape_trajectory(q_pred_flat, n_components=n_components)
 
     output_dir = OUTPUTS_DIR / args.equation / args.run_id / "movies"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    if args.style in ["channels", "all"]:
-        print("Generating channel animation...")
-        animate_channels(
-            q_true,
-            q_pred,
-            output_dir / f"{timestamp}_{args.run_id}_truevpred_channels.{args.format}",
-            fps=args.fps,
-        )
+    GENERAL_STYLES = ["channels", "amplitudes"]
+    BURGERS_STYLES = ["quiver", "vorticity", "streamlines", "dashes"]
 
-    if args.style in ["quiver", "all"]:
-        print("Generating quiver animation...")
-        animate_quiver(
-            q_true,
-            q_pred,
-            output_dir / f"{timestamp}_{args.run_id}_truevpred_quiver.{args.format}",
-            fps=args.fps,
-        )
+    if args.style == "all":
+        styles_to_run = GENERAL_STYLES.copy()
+        if args.equation == "burgers":
+            styles_to_run.extend(BURGERS_STYLES)
+    else:
+        if args.style in BURGERS_STYLES and args.equation != "burgers":
+            print(f"Warning: Style '{args.style}' is specific to the Burgers equation. Skipping.")
+            styles_to_run = []
+        else:
+            styles_to_run = [args.style]
 
-    if args.style in ["vorticity", "all"]:
-        print("Generating vorticity animation...")
-        animate_vorticity(
-            q_true,
-            q_pred,
-            output_dir / f"{timestamp}_{args.run_id}_truevpred_vorticity.{args.format}",
-            fps=args.fps,
-        )
-
-    if args.style in ["streamlines", "all"]:
-        print("Generating streamline animation...")
-        animate_streamlines(
-            q_true,
-            q_pred,
-            output_dir / f"{timestamp}_{args.run_id}_truevpred_streamlines.{args.format}",
-            fps=args.fps,
-        )
-
-    if args.style in ["amplitudes", "all"]:
-        print("Generating amplitude animation...")
-        animate_amplitudes(
-            A_true,
-            A_pred,
-            output_dir / f"{timestamp}_{args.run_id}_truevpred_amplitudes.{args.format}",
-            fps=args.fps,
-        )
-
-    if args.style in ["dashes", "all"]:
-        print("Generating moving dashes animation...")
-        animate_moving_dashes(
-            q_true,
-            q_pred,
-            output_dir / f"{timestamp}_{args.run_id}_truevpred_dashes.{args.format}",
-            fps=args.fps,
-        )
+    for style in styles_to_run:
+        if style == "channels":
+            print("Generating channel animation...")
+            animate_channels(
+                q_true,
+                q_pred,
+                output_dir / f"{timestamp}_{args.run_id}_truevpred_channels.{args.format}",
+                fps=args.fps,
+            )
+        elif style == "quiver":
+            print("Generating quiver animation...")
+            animate_quiver(
+                q_true,
+                q_pred,
+                output_dir / f"{timestamp}_{args.run_id}_truevpred_quiver.{args.format}",
+                fps=args.fps,
+            )
+        elif style == "vorticity":
+            print("Generating vorticity animation...")
+            animate_vorticity(
+                q_true,
+                q_pred,
+                output_dir / f"{timestamp}_{args.run_id}_truevpred_vorticity.{args.format}",
+                fps=args.fps,
+            )
+        elif style == "streamlines":
+            print("Generating streamline animation...")
+            animate_streamlines(
+                q_true,
+                q_pred,
+                output_dir / f"{timestamp}_{args.run_id}_truevpred_streamlines.{args.format}",
+                fps=args.fps,
+            )
+        elif style == "amplitudes":
+            print("Generating amplitude animation...")
+            animate_amplitudes(
+                A_true,
+                A_pred,
+                output_dir / f"{timestamp}_{args.run_id}_truevpred_amplitudes.{args.format}",
+                fps=args.fps,
+            )
+        elif style == "dashes":
+            print("Generating moving dashes animation...")
+            animate_moving_dashes(
+                q_true,
+                q_pred,
+                output_dir / f"{timestamp}_{args.run_id}_truevpred_dashes.{args.format}",
+                fps=args.fps,
+            )
 
     # 1) Plot POD Bases
     if args.n_bases > 0:
@@ -277,7 +302,10 @@ def main():
         for i in range(min(args.n_bases, basis_U.shape[1])):
             # basis_U is (n_state, r). Extract column i and reshape.
             mode_field = state_vec_to_fields(basis_U[:, i], layout)
-            plot_pod_basis(mode_field, bases_dir / f"mode_{i:03d}.png", title=f"Mode {i}")
+            if args.equation == "burgers":
+                plot_pod_basis(mode_field, bases_dir / f"mode_{i:03d}.png", title=f"Mode {i}")
+            else:
+                pass # plot_pod_basis currently only supports C=2
         print(f"Saved basis plots to {bases_dir}")
 
     # 2) Reconstruction Animations
@@ -294,10 +322,14 @@ def main():
             # Reconstruct using k modes
             q_recon = reconstruct_from_k_modes(basis_U, A_pred_T, k, layout, mean_state=mean_q)
 
-            out_path = (
-                recon_dir / f"{timestamp}_{args.run_id}_recon_k{k:02d}_vorticity.{args.format}"
-            )
-            animate_vorticity(q_true, q_recon, out_path, fps=args.fps)
+            if args.equation == "burgers":
+                out_path = (
+                    recon_dir / f"{timestamp}_{args.run_id}_recon_k{k:02d}_vorticity.{args.format}"
+                )
+                animate_vorticity(q_true, q_recon, out_path, fps=args.fps)
+            else:
+                out_path = recon_dir / f"{timestamp}_{args.run_id}_recon_k{k:02d}_channels.{args.format}"
+                animate_channels(q_true, q_recon, out_path, fps=args.fps)
         print(f"Saved reconstruction animations to {recon_dir}")
 
 

@@ -4,12 +4,12 @@ seed: 0
 data:
   equation: kuramotosivashinsky
   structure: grid
-  resolution: low
+  resolution: medium
   split: train
   n_trajectories: 1
   trajectory_ids: [1]
   data_path: null
-  download_if_missing: true
+  download_if_missing: false
   lookback: 199
   rollout: 198
   squeeze_lookback_dim: false

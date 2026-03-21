@@ -473,7 +473,7 @@ def animate_amplitudes(
     if A_pred.shape != (T, r):
         raise ValueError("A_true and A_pred must have the same shape.")
 
-    mode_indices = np.arange(r)
+    mode_indices = np.arange(1, r + 1)
     width = 0.35  # the width of the bars
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 6))
