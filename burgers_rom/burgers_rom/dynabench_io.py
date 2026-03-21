@@ -19,6 +19,7 @@ from dynabench.dataset import DynabenchIterator
 
 def build_iterator(
     split: str,
+    equation: str,
     structure: str,
     resolution: str,
     base_path: str,
@@ -34,6 +35,8 @@ def build_iterator(
     ----------
     split : str
         Dataset split: 'train', 'val', or 'test'.
+    equation : str
+        The equation to use. Can be "advection", "burgers", "gasdynamics", "kuramotosivashinsky", "reactiondiffustion" or "wave".
     structure : str
         Data structure type. Must be 'grid'.
     resolution : str
@@ -56,7 +59,7 @@ def build_iterator(
     """
     return DynabenchIterator(
         split=split,
-        equation="burgers",
+        equation=equation,
         structure=structure,
         resolution=resolution,
         base_path=base_path,

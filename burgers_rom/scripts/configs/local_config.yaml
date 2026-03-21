@@ -2,14 +2,14 @@
 name: burgers_rom_local
 seed: 0
 data:
-  equation: burgers
+  equation: kuramotosivashinsky
   structure: grid
   resolution: low
   split: train
   n_trajectories: 1
-  trajectory_ids: [99]
+  trajectory_ids: [1]
   data_path: null
-  download_if_missing: false
+  download_if_missing: true
   lookback: 199
   rollout: 198
   squeeze_lookback_dim: false

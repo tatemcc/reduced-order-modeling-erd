@@ -99,6 +99,7 @@ def run(
     print("Building iterator...")
     iterator = build_iterator(
         split=cfg.data.split,
+        equation=cfg.data.equation,
         structure=cfg.data.structure,
         resolution=cfg.data.resolution,
         base_path=cfg.data.data_path,

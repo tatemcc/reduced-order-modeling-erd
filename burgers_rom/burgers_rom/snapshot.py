@@ -32,7 +32,7 @@ class SnapshotLayout:
 
     ny: int
     nx: int
-    n_components: int = 2
+    n_components: int
 
     @property
     def n_points(self) -> int:
