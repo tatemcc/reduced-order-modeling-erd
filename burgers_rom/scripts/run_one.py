@@ -18,6 +18,7 @@ import yaml
 from burgers_rom.config import (
     DataConfig,
     DerivConfig,
+    PlotConfig,
     PODConfig,
     RunConfig,
     SINDyConfig,
@@ -72,11 +73,12 @@ def load_run_config(path: Optional[Path]) -> RunConfig:
     pod = PODConfig(**cfg.get("pod", {}))
     deriv = DerivConfig(**cfg.get("deriv", {}))
     sindy = SINDyConfig(**cfg.get("sindy", {}))
+    plots = PlotConfig(**cfg.get("plots", {}))
 
     # Filter top-level arguments to avoid passing sub-config dicts to RunConfig
-    run_kwargs = {k: v for k, v in cfg.items() if k not in ["data", "pod", "deriv", "sindy"]}
+    run_kwargs = {k: v for k, v in cfg.items() if k not in ["data", "pod", "deriv", "sindy", "plots"]}
 
-    return RunConfig(data=data, pod=pod, deriv=deriv, sindy=sindy, **run_kwargs)
+    return RunConfig(data=data, pod=pod, deriv=deriv, sindy=sindy, plots=plots, **run_kwargs)
 
 
 def build_argparser() -> argparse.ArgumentParser:

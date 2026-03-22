@@ -237,6 +237,7 @@ def run(
 
         generate_all_plots_and_movies(
             cfg=cfg.plots,
+            equation=cfg.data.equation,
             rundir=rundir,
             layout=layout,
             pod=pod,

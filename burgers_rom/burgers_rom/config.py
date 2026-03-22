@@ -185,6 +185,10 @@ class PlotConfig:
     movie_every: int = 1
     movie_components: Optional[list[int]] = None  # None means all components
 
+    # 3D surface movie
+    movie_3d_surface: bool = False
+    movie_3d_interp_factor: int = 3
+
     # field error plots
     metrics_curves: bool = True
 

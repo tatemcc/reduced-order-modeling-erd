@@ -19,7 +19,11 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import imageio.v2 as imageio
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.interpolate import RectBivariateSpline
+from matplotlib.colors import LightSource, hsv_to_rgb
 
 from .config import PlotConfig
 from .pod import PODResult
@@ -70,6 +74,43 @@ def _savefig(fig, path: Path, dpi: int) -> None:
     fig.savefig(path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
 
+def compute_vorticity(q: np.ndarray, L: float = 1.0) -> np.ndarray:
+    """
+    Compute scalar vorticity field from velocity field.
+
+    omega = dv/dx - du/dy
+
+    Parameters
+    ----------
+    q : np.ndarray
+        Velocity field of shape (T, 2, ny, nx).
+        q[:, 0] is u (x-velocity), q[:, 1] is v (y-velocity).
+    L : float
+        Domain size length (assumed square [0, L]x[0, L]).
+
+    Returns
+    -------
+    omega : np.ndarray
+        Vorticity field of shape (T, ny, nx).
+    """
+    if q.ndim != 4 or q.shape[1] != 2:
+        raise ValueError("Vorticity requires velocity field of shape (T, 2, ny, nx)")
+
+    T, C, ny, nx = q.shape
+    dx = L / (nx - 1) if nx > 1 else 1.0
+    dy = L / (ny - 1) if ny > 1 else 1.0
+
+    u = q[:, 0]
+    v = q[:, 1]
+
+    # du/dy: gradient of u along axis 1 (y-axis)
+    dudy = np.gradient(u, axis=1) / dy
+
+    # dv/dx: gradient of v along axis 2 (x-axis)
+    dvdx = np.gradient(v, axis=2) / dx
+
+    omega = dvdx - dudy
+    return omega
 
 def plot_pod_singular_values(
     pod: PODResult,
@@ -533,6 +574,156 @@ def plot_metrics_curves_from_artifacts(
         plt.legend()
         _savefig(fig, out_dir / "metrics_energy_drift.png", dpi=dpi)
 
+def animate_3d_surface(
+    q_true: np.ndarray,
+    q_pred: np.ndarray,
+    equation: str,
+    output_path: Path,
+    fps: int = 15,
+    dpi: int = 100,
+    interp_factor: int = 3,
+) -> None:
+    """
+    Animate a 3D surface plot of fields, with behavior depending on the equation.
+
+    For 'burgers', this plots vorticity as height and velocity direction as color.
+    Uses cubic spline interpolation for a smooth appearance.
+
+    Parameters
+    ----------
+    q_true : np.ndarray
+        Ground truth trajectory of shape (T, C, ny, nx).
+    q_pred : np.ndarray
+        Predicted trajectory of shape (T, C, ny, nx).
+    equation : str
+        Name of the equation, e.g., 'burgers'.
+    output_path : Path
+        Destination path for the movie file.
+    fps : int
+        Frames per second for the animation.
+    dpi : int
+        DPI for rendering frames.
+    interp_factor : int
+        Factor by which to increase grid resolution for interpolation.
+    """
+    T, C, ny, nx = q_true.shape
+
+    # --- Data preparation based on equation ---
+    if equation == "burgers":
+        if C != 2:
+            print(f"Skipping 3D surface plot for 'burgers': requires 2 components, found {C}.")
+            return
+        
+        # Height data: vorticity
+        z_true = compute_vorticity(q_true)
+        z_pred = compute_vorticity(q_pred)
+
+        # Color data (velocity angle) is handled inside the update loop
+        # by interpolating u and v components to avoid angle wrapping issues.
+        z_label = "Vorticity"
+    else:
+        print(f"3D surface plot not implemented for equation '{equation}'. Skipping.")
+        return
+
+    # --- Interpolation setup ---
+    x = np.arange(nx)
+    y = np.arange(ny)
+    x_fine = np.linspace(0, nx - 1, nx * interp_factor)
+    y_fine = np.linspace(0, ny - 1, ny * interp_factor)
+    xx_fine, yy_fine = np.meshgrid(x_fine, y_fine)
+
+    # --- Plotting setup ---
+    fig = plt.figure(figsize=(16, 7), dpi=dpi)
+    ax_true = fig.add_subplot(1, 2, 1, projection='3d')
+    ax_pred = fig.add_subplot(1, 2, 2, projection='3d')
+    title = fig.suptitle("Time: 0")
+
+    # Create a light source for manual shading
+    light = LightSource(azdeg=225, altdeg=45)
+
+    # Determine shared z-axis limits for consistency
+    z_min = min(z_true.min(), z_pred.min())
+    z_max = max(z_true.max(), z_pred.max())
+
+    def update(frame: int):
+        ax_true.clear()
+        ax_pred.clear()
+        
+        title.set_text(f"Time: {frame}")
+
+        # --- Process and plot TRUE data ---
+        # Interpolate height (vorticity)
+        spline_z_true = RectBivariateSpline(y, x, z_true[frame], kx=3, ky=3)
+        z_fine_true = spline_z_true(y_fine, x_fine)
+
+        # Interpolate color (velocity components) and compute angle
+        u_true_frame, v_true_frame = q_true[frame, 0], q_true[frame, 1]
+        spline_u_true = RectBivariateSpline(y, x, u_true_frame, kx=3, ky=3)
+        spline_v_true = RectBivariateSpline(y, x, v_true_frame, kx=3, ky=3)
+        u_fine_true = spline_u_true(y_fine, x_fine)
+        v_fine_true = spline_v_true(y_fine, x_fine)
+        color_fine_true = np.arctan2(v_fine_true, u_fine_true)
+        
+        # --- Manually combine color (from angle) and shading (from height) ---
+        # 1. Calculate per-vertex hue from velocity angle.
+        hue_true = (color_fine_true + np.pi) / (2 * np.pi)
+        # 2. Calculate per-vertex saturation (full saturation).
+        saturation_true = np.ones_like(hue_true)
+        # 3. Calculate per-vertex illumination (Value) from height, but soften it.
+        # Use a lower vert_exag and rescale to avoid overly dark shadows.
+        illumination_true = light.hillshade(z_fine_true, vert_exag=0.8)
+        rescaled_illumination_true = 0.5 + 0.5 * illumination_true
+        # 4. Combine into an HSV array and convert to RGB. This gives per-vertex colors.
+        hsv_vertex_true = np.stack([hue_true, saturation_true, rescaled_illumination_true], axis=-1)
+        rgb_vertex_true = hsv_to_rgb(hsv_vertex_true)
+
+        # 5. To fix the "blue and orange" issue, we provide explicit face colors
+        # by averaging the colors of the four vertices of each face.
+        # This is more robust than relying on Matplotlib's vertex color handling.
+        rgb_face_true = (rgb_vertex_true[:-1, :-1, :] + rgb_vertex_true[1:, :-1, :] + rgb_vertex_true[:-1, 1:, :] + rgb_vertex_true[1:, 1:, :]) / 4.0
+
+        ax_true.set_title("True Field")
+        ax_true.set_zlim(z_min, z_max)
+        ax_true.set_xlabel("x"); ax_true.set_ylabel("y"); ax_true.set_zlabel(z_label)
+        ax_true.plot_surface(xx_fine, yy_fine, z_fine_true, facecolors=rgb_face_true, rstride=1, cstride=1, antialiased=True, shade=False)
+
+        # --- Process and plot PRED data ---
+        # Interpolate height (vorticity)
+        spline_z_pred = RectBivariateSpline(y, x, z_pred[frame], kx=3, ky=3)
+        z_fine_pred = spline_z_pred(y_fine, x_fine)
+
+        # Interpolate color (velocity components) and compute angle
+        u_pred_frame, v_pred_frame = q_pred[frame, 0], q_pred[frame, 1]
+        spline_u_pred = RectBivariateSpline(y, x, u_pred_frame, kx=3, ky=3)
+        spline_v_pred = RectBivariateSpline(y, x, v_pred_frame, kx=3, ky=3)
+        u_fine_pred = spline_u_pred(y_fine, x_fine)
+        v_fine_pred = spline_v_pred(y_fine, x_fine)
+        color_fine_pred = np.arctan2(v_fine_pred, u_fine_pred)
+        
+        # --- Manually combine color and shading for predicted data ---
+        # (Same logic as for the true data)
+        hue_pred = (color_fine_pred + np.pi) / (2 * np.pi)
+        saturation_pred = np.ones_like(hue_pred)
+        illumination_pred = light.hillshade(z_fine_pred, vert_exag=0.8)
+        rescaled_illumination_pred = 0.5 + 0.5 * illumination_pred
+        hsv_vertex_pred = np.stack([hue_pred, saturation_pred, rescaled_illumination_pred], axis=-1)
+        rgb_vertex_pred = hsv_to_rgb(hsv_vertex_pred)
+        rgb_face_pred = (rgb_vertex_pred[:-1, :-1, :] + rgb_vertex_pred[1:, :-1, :] + rgb_vertex_pred[:-1, 1:, :] + rgb_vertex_pred[1:, 1:, :]) / 4.0
+
+        ax_pred.set_title("Predicted Field")
+        ax_pred.set_zlim(z_min, z_max)
+        ax_pred.set_xlabel("x"); ax_pred.set_ylabel("y"); ax_pred.set_zlabel(z_label)
+        ax_pred.plot_surface(xx_fine, yy_fine, z_fine_pred, facecolors=rgb_face_pred, rstride=1, cstride=1, antialiased=True, shade=False)
+
+        return [ax_true, ax_pred]
+
+    # Create and save animation
+    ani = animation.FuncAnimation(fig, update, frames=T, blit=False, interval=1000 / fps)
+    writer = "ffmpeg" if output_path.suffix == ".mp4" else "pillow"
+    ani.save(output_path, writer=writer, fps=fps)
+    plt.close(fig)
+    print(f"Saved 3D surface animation to {output_path}")
+
 def generate_all_plots_and_movies(
     cfg: PlotConfig,
     rundir: Path,
@@ -540,6 +731,7 @@ def generate_all_plots_and_movies(
     pod: PODResult,
     sindy: SINDyFitResult,
     rollout: RolloutResult,
+    equation: str,
 ) -> None:
     """
     Generate all configured plots and movies for a completed run.
@@ -550,6 +742,8 @@ def generate_all_plots_and_movies(
         Plot configuration.
     rundir : Path
         Run output directory.
+    equation : str
+        Name of the equation.
     layout : SnapshotLayout
         Snapshot layout for reshaping basis modes.
     pod : PODResult
@@ -626,4 +820,16 @@ def generate_all_plots_and_movies(
             rundir=rundir,
             out_dir=fig_dir,
             dpi=cfg.dpi,
+        )
+
+    if getattr(cfg, "movie_3d_surface", False):
+        interp_factor = getattr(cfg, "movie_3d_interp_factor", 3)
+        animate_3d_surface(
+            q_true=rollout.fields_true,
+            q_pred=rollout.fields_pred,
+            equation=equation,
+            output_path=mov_dir / "rollout_3d_surface.mp4",
+            fps=cfg.movie_fps,
+            dpi=cfg.dpi,
+            interp_factor=interp_factor,
         )
