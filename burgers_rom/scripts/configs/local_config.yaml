@@ -2,12 +2,12 @@
 name: burgers_rom_local
 seed: 0
 data:
-  equation: burgers
+  equation: gasdynamics
   structure: grid
   resolution: low
   split: train
   n_trajectories: 1
-  trajectory_ids: [5]
+  trajectory_ids: [1]
   data_path: null
   download_if_missing: false
   lookback: 199
@@ -16,7 +16,7 @@ data:
   time_stride: 1
   time_limit: null
 pod:
-  rank: 8
+  rank: 12
   energy_fraction: null
   center: true
 deriv:

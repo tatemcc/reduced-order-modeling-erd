@@ -23,7 +23,7 @@ import matplotlib.animation as animation
 import imageio.v2 as imageio
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.interpolate import RectBivariateSpline
-from matplotlib.colors import LightSource, hsv_to_rgb
+from matplotlib.colors import LightSource, hsv_to_rgb, Normalize
 
 from .config import PlotConfig
 from .pod import PODResult
@@ -111,6 +111,50 @@ def compute_vorticity(q: np.ndarray, L: float = 1.0) -> np.ndarray:
 
     omega = dvdx - dudy
     return omega
+
+def compute_gasdynamics_vars(q: np.ndarray, gamma: float = 1.4) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute pressure and velocity magnitude from conserved gas dynamics variables.
+
+    Assumes q = [rho, rho*u_x, rho*u_y, E]
+
+    Parameters
+    ----------
+    q : np.ndarray
+        Conserved variables of shape (T, 4, ny, nx).
+    gamma : float
+        Adiabatic index.
+
+    Returns
+    -------
+    pressure : np.ndarray
+        Pressure field of shape (T, ny, nx).
+    velocity_mag : np.ndarray
+        Velocity magnitude field of shape (T, ny, nx).
+    """
+    if q.ndim != 4 or q.shape[1] != 4:
+        raise ValueError("Gas dynamics requires field of shape (T, 4, ny, nx)")
+
+    rho = q[:, 0]
+    rho_ux = q[:, 1]
+    rho_uy = q[:, 2]
+    E = q[:, 3]
+
+    # Add a small epsilon to rho to avoid division by zero in low-density regions
+    rho_stable = rho + 1e-9
+
+    # Kinetic energy: 0.5 * rho * (ux^2 + uy^2) = 0.5 * ( (rho*ux)^2 + (rho*uy)^2 ) / rho
+    kinetic_energy = 0.5 * (rho_ux**2 + rho_uy**2) / rho_stable
+    
+    # Pressure: p = (gamma - 1) * (E - KE)
+    pressure = (gamma - 1) * (E - kinetic_energy)
+
+    # Velocity magnitude: |u| = sqrt(ux^2 + uy^2) = sqrt( (rho*ux/rho)^2 + (rho*uy/rho)^2 )
+    ux = rho_ux / rho_stable
+    uy = rho_uy / rho_stable
+    velocity_mag = np.sqrt(ux**2 + uy**2)
+
+    return pressure, velocity_mag
 
 def plot_pod_singular_values(
     pod: PODResult,
@@ -619,8 +663,43 @@ def animate_3d_surface(
         z_pred = compute_vorticity(q_pred)
 
         # Color data (velocity angle) is handled inside the update loop
-        # by interpolating u and v components to avoid angle wrapping issues.
+        # by interpolating u and v components.
         z_label = "Vorticity"
+        color_mode = "hsv"
+        cmap = "hsv"  # For burgers, this is handled by hsv_to_rgb
+
+    elif equation == "kuramotosivashinsky":
+        if C != 1:
+            print(f"Skipping 3D surface plot for 'kuramotosivashinsky': requires 1 component, found {C}.")
+            return
+        
+        # Height is the field value itself
+        z_true = q_true[:, 0]
+        z_pred = q_pred[:, 0]
+
+        # Color is the magnitude of the spatial gradient
+        grad_true_y, grad_true_x = np.gradient(z_true, axis=(1, 2))
+        color_data_true = np.sqrt(grad_true_x**2 + grad_true_y**2)
+        grad_pred_y, grad_pred_x = np.gradient(z_pred, axis=(1, 2))
+        color_data_pred = np.sqrt(grad_pred_x**2 + grad_pred_y**2)
+
+        z_label = "Field Value u(x,y)"
+        color_mode = "colormap"
+        cmap = "viridis"
+
+    elif equation == "gasdynamics":
+        if C != 4:
+            print(f"Skipping 3D surface plot for 'gasdynamics': requires 4 components, found {C}.")
+            return
+        
+        # Height is pressure, color is velocity magnitude
+        z_true, color_data_true = compute_gasdynamics_vars(q_true)
+        z_pred, color_data_pred = compute_gasdynamics_vars(q_pred)
+
+        z_label = "Pressure"
+        color_mode = "colormap"
+        cmap = "plasma"
+
     else:
         print(f"3D surface plot not implemented for equation '{equation}'. Skipping.")
         return
@@ -645,6 +724,16 @@ def animate_3d_surface(
     z_min = min(z_true.min(), z_pred.min())
     z_max = max(z_true.max(), z_pred.max())
 
+    # Pre-calculate color normalization for colormap-based plots
+    if color_mode == "colormap":
+        color_min = min(color_data_true.min(), color_data_pred.min())
+        color_max = max(color_data_true.max(), color_data_pred.max())
+        # Handle case where max == min to avoid division by zero
+        if color_max - color_min < 1e-9:
+            color_max = color_min + 1.0
+        color_norm = Normalize(vmin=color_min, vmax=color_max)
+        cmap_obj = plt.get_cmap(cmap)
+
     def update(frame: int):
         ax_true.clear()
         ax_pred.clear()
@@ -656,30 +745,43 @@ def animate_3d_surface(
         spline_z_true = RectBivariateSpline(y, x, z_true[frame], kx=3, ky=3)
         z_fine_true = spline_z_true(y_fine, x_fine)
 
-        # Interpolate color (velocity components) and compute angle
-        u_true_frame, v_true_frame = q_true[frame, 0], q_true[frame, 1]
-        spline_u_true = RectBivariateSpline(y, x, u_true_frame, kx=3, ky=3)
-        spline_v_true = RectBivariateSpline(y, x, v_true_frame, kx=3, ky=3)
-        u_fine_true = spline_u_true(y_fine, x_fine)
-        v_fine_true = spline_v_true(y_fine, x_fine)
-        color_fine_true = np.arctan2(v_fine_true, u_fine_true)
-        
         # --- Manually combine color (from angle) and shading (from height) ---
-        # 1. Calculate per-vertex hue from velocity angle.
-        hue_true = (color_fine_true + np.pi) / (2 * np.pi)
-        # 2. Calculate per-vertex saturation (full saturation).
-        saturation_true = np.ones_like(hue_true)
-        # 3. Calculate per-vertex illumination (Value) from height, but soften it.
-        # Use a lower vert_exag and rescale to avoid overly dark shadows.
         illumination_true = light.hillshade(z_fine_true, vert_exag=0.8)
         rescaled_illumination_true = 0.5 + 0.5 * illumination_true
-        # 4. Combine into an HSV array and convert to RGB. This gives per-vertex colors.
-        hsv_vertex_true = np.stack([hue_true, saturation_true, rescaled_illumination_true], axis=-1)
-        rgb_vertex_true = hsv_to_rgb(hsv_vertex_true)
 
-        # 5. To fix the "blue and orange" issue, we provide explicit face colors
-        # by averaging the colors of the four vertices of each face.
-        # This is more robust than relying on Matplotlib's vertex color handling.
+        if color_mode == "hsv":
+            # Interpolate color (velocity components) and compute angle
+            u_true_frame, v_true_frame = q_true[frame, 0], q_true[frame, 1]
+            spline_u_true = RectBivariateSpline(y, x, u_true_frame, kx=3, ky=3)
+            spline_v_true = RectBivariateSpline(y, x, v_true_frame, kx=3, ky=3)
+            u_fine_true = spline_u_true(y_fine, x_fine)
+            v_fine_true = spline_v_true(y_fine, x_fine)
+            color_fine_true = np.arctan2(v_fine_true, u_fine_true)
+
+            # 1. Calculate per-vertex hue from velocity angle.
+            hue_true = (color_fine_true + np.pi) / (2 * np.pi)
+            # 2. Calculate per-vertex saturation (full saturation).
+            saturation_true = np.ones_like(hue_true)
+            # 3. Combine into an HSV array and convert to RGB. This gives per-vertex colors.
+            hsv_vertex_true = np.stack([hue_true, saturation_true, rescaled_illumination_true], axis=-1)
+            rgb_vertex_true = hsv_to_rgb(hsv_vertex_true)
+
+        elif color_mode == "colormap":
+            # Interpolate scalar color data
+            spline_color_true = RectBivariateSpline(y, x, color_data_true[frame], kx=3, ky=3)
+            color_fine_true = spline_color_true(y_fine, x_fine)
+
+            # 1. Get RGB values from colormap using pre-calculated normalization.
+            colors_from_map = cmap_obj(color_norm(color_fine_true))[:, :, :3]  # Drop alpha
+            # 2. Modulate brightness with illumination to get per-vertex colors.
+            rgb_vertex_true = colors_from_map * rescaled_illumination_true[..., np.newaxis]
+
+        else:
+            # Fallback to simple shading if color mode is unknown
+            rgb_vertex_true = light.shade(z_fine_true, cmap=plt.get_cmap('gray'))
+
+        # To fix the "blue and orange" issue, we provide explicit face colors
+        # by averaging the colors of the four vertices of each face. This is more robust.
         rgb_face_true = (rgb_vertex_true[:-1, :-1, :] + rgb_vertex_true[1:, :-1, :] + rgb_vertex_true[:-1, 1:, :] + rgb_vertex_true[1:, 1:, :]) / 4.0
 
         ax_true.set_title("True Field")
@@ -692,22 +794,33 @@ def animate_3d_surface(
         spline_z_pred = RectBivariateSpline(y, x, z_pred[frame], kx=3, ky=3)
         z_fine_pred = spline_z_pred(y_fine, x_fine)
 
-        # Interpolate color (velocity components) and compute angle
-        u_pred_frame, v_pred_frame = q_pred[frame, 0], q_pred[frame, 1]
-        spline_u_pred = RectBivariateSpline(y, x, u_pred_frame, kx=3, ky=3)
-        spline_v_pred = RectBivariateSpline(y, x, v_pred_frame, kx=3, ky=3)
-        u_fine_pred = spline_u_pred(y_fine, x_fine)
-        v_fine_pred = spline_v_pred(y_fine, x_fine)
-        color_fine_pred = np.arctan2(v_fine_pred, u_fine_pred)
-        
         # --- Manually combine color and shading for predicted data ---
-        # (Same logic as for the true data)
-        hue_pred = (color_fine_pred + np.pi) / (2 * np.pi)
-        saturation_pred = np.ones_like(hue_pred)
         illumination_pred = light.hillshade(z_fine_pred, vert_exag=0.8)
         rescaled_illumination_pred = 0.5 + 0.5 * illumination_pred
-        hsv_vertex_pred = np.stack([hue_pred, saturation_pred, rescaled_illumination_pred], axis=-1)
-        rgb_vertex_pred = hsv_to_rgb(hsv_vertex_pred)
+
+        if color_mode == "hsv":
+            u_pred_frame, v_pred_frame = q_pred[frame, 0], q_pred[frame, 1]
+            spline_u_pred = RectBivariateSpline(y, x, u_pred_frame, kx=3, ky=3)
+            spline_v_pred = RectBivariateSpline(y, x, v_pred_frame, kx=3, ky=3)
+            u_fine_pred = spline_u_pred(y_fine, x_fine)
+            v_fine_pred = spline_v_pred(y_fine, x_fine)
+            color_fine_pred = np.arctan2(v_fine_pred, u_fine_pred)
+
+            hue_pred = (color_fine_pred + np.pi) / (2 * np.pi)
+            saturation_pred = np.ones_like(hue_pred)
+            hsv_vertex_pred = np.stack([hue_pred, saturation_pred, rescaled_illumination_pred], axis=-1)
+            rgb_vertex_pred = hsv_to_rgb(hsv_vertex_pred)
+
+        elif color_mode == "colormap":
+            spline_color_pred = RectBivariateSpline(y, x, color_data_pred[frame], kx=3, ky=3)
+            color_fine_pred = spline_color_pred(y_fine, x_fine)
+
+            colors_from_map = cmap_obj(color_norm(color_fine_pred))[:, :, :3]
+            rgb_vertex_pred = colors_from_map * rescaled_illumination_pred[..., np.newaxis]
+
+        else:
+            rgb_vertex_pred = light.shade(z_fine_pred, cmap=plt.get_cmap('gray'))
+
         rgb_face_pred = (rgb_vertex_pred[:-1, :-1, :] + rgb_vertex_pred[1:, :-1, :] + rgb_vertex_pred[:-1, 1:, :] + rgb_vertex_pred[1:, 1:, :]) / 4.0
 
         ax_pred.set_title("Predicted Field")
