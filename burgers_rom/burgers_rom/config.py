@@ -28,7 +28,7 @@ OUTPUTS_DIR = REPO_ROOT / "outputs"
 # ---------------------------
 # Type aliases
 # ---------------------------
-EquationName = Literal["burgers"]
+EquationName = Literal["advection", "burgers", "gasdynamics", "kuramotosivashinsky", "reactiondiffusion", "wave"]
 StructureName = Literal["grid"]
 ResolutionName = Literal["low", "medium", "high"]
 

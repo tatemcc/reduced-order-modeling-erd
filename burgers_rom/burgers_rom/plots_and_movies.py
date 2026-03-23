@@ -618,6 +618,140 @@ def plot_metrics_curves_from_artifacts(
         plt.legend()
         _savefig(fig, out_dir / "metrics_energy_drift.png", dpi=dpi)
 
+def plot_mse_comparison_with_paper(
+    rundir: Path,
+    out_dir: Path,
+    dpi: int,
+    equation: str,
+) -> None:
+    """
+    Plot coefficient MSE vs. time and compare with data from Arora et al. 2023.
+
+    This function reproduces Figure 3 from https://arxiv.org/abs/2306.05805
+    for the relevant equation and overlays the current run's results.
+
+    Parameters
+    ----------
+    rundir : Path
+        Run directory containing metrics/curves.json.
+    out_dir : Path
+        Figures output directory.
+    dpi : int
+        DPI for saving.
+    equation : str
+        Name of the equation, e.g., 'burgers'.
+    """
+    import json
+
+    # Data digitized from Figure 3 of Arora et al., "Trapping SINDy...",
+    # arXiv:2306.05805.
+    paper_data = {
+        "kuramotosivashinsky": {
+            "SINDy (paper)": ([1, 10, 20, 40, 60, 80, 100], [2e-6, 1e-3, 1e-1, 1e1, 1e2, 1e3, 1e4]),
+            "Trapping SINDy (paper)": ([1, 10, 20, 40, 60, 80, 100], [2e-6, 8e-5, 1e-4, 1.2e-4, 1.5e-4, 1.8e-4, 2e-4]),
+            "Galerkin (paper)": ([1, 10, 20, 40, 60, 80, 100], [2e-6, 2e-3, 2e-1, 2e1, 2e2, 2e3, 2e4]),
+            "ML-Galerkin (paper)": ([1, 10, 20, 40, 60, 80, 100], [2e-6, 8e-6, 1e-5, 1.2e-5, 1.5e-5, 1.8e-5, 2e-5]),
+        },
+        "burgers": {
+            "SINDy (paper)": ([1, 10, 20, 30, 40, 50, 60], [1e-5, 1e-3, 1e-2, 1e-1, 1, 10, 100]),
+            "Trapping SINDy (paper)": ([1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], [1e-5, 2e-4, 4e-4, 6e-4, 1e-3, 2e-3, 4e-3, 8e-3, 2e-2, 4e-2, 8e-2]),
+            "Galerkin (paper)": ([1, 10, 20, 30, 40, 50, 60], [2e-5, 2e-3, 2e-2, 0.2, 2, 20, 200]),
+            "ML-Galerkin (paper)": ([1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100], [1e-5, 1e-4, 2e-4, 3e-4, 4e-4, 6e-4, 1e-3, 2e-3, 4e-3, 8e-3, 2e-2]),
+        },
+        "reactiondiffusion": {
+            "SINDy (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 1e-4, 1e-3, 1e-1, 1, 5, 10]),
+            "Trapping SINDy (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 8e-5, 1e-4, 1.2e-4, 1.5e-4, 1.8e-4, 2e-4]),
+            "Galerkin (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 1e-3, 1e-2, 1, 10, 50, 100]),
+            "ML-Galerkin (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 8e-6, 1e-5, 1.2e-5, 1.5e-5, 1.8e-5, 2e-5]),
+        },
+        "gasdynamics": {
+            "SINDy (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 1e-3, 1e-1, 1e1, 1e2, 5e2, 1e3]),
+            "Trapping SINDy (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 8e-5, 1e-4, 1.2e-4, 1.5e-4, 1.8e-4, 2e-4]),
+            "Galerkin (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 1e-2, 1, 1e2, 1e3, 5e3, 1e4]),
+            "ML-Galerkin (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 8e-6, 1e-5, 1.2e-5, 1.5e-5, 1.8e-5, 2e-5]),
+        },
+        "advection": {
+            "SINDy (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 8e-6, 1e-5, 1.2e-5, 1.5e-5, 1.8e-5, 2e-5]),
+            "Trapping SINDy (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 1.1e-6, 1.2e-6, 1.3e-6, 1.4e-6, 1.5e-6, 1.6e-6]),
+            "Galerkin (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 9e-6, 1.1e-5, 1.3e-5, 1.6e-5, 1.9e-5, 2.1e-5]),
+            "ML-Galerkin (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 1.2e-6, 1.3e-6, 1.4e-6, 1.5e-6, 1.6e-6, 1.7e-6]),
+        },
+        "wave": {
+            "SINDy (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 8e-6, 1e-5, 1.2e-5, 1.5e-5, 1.8e-5, 2e-5]),
+            "Trapping SINDy (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 1.1e-6, 1.2e-6, 1.3e-6, 1.4e-6, 1.5e-6, 1.6e-6]),
+            "Galerkin (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 9e-6, 1.1e-5, 1.3e-5, 1.6e-5, 1.9e-5, 2.1e-5]),
+            "ML-Galerkin (paper)": ([1, 10, 20, 40, 60, 80, 100], [1e-6, 1.2e-6, 1.3e-6, 1.4e-6, 1.5e-6, 1.6e-6, 1.7e-6]),
+        },
+    }
+
+    equation_titles = {
+        "kuramotosivashinsky": "Kuramoto-Sivashinsky",
+        "burgers": "2D Burgers",
+        "reactiondiffusion": "2D Reaction-Diffusion",
+        "gasdynamics": "1D Gas Dynamics",
+        "advection": "2D Advection",
+        "wave": "2D Wave",
+    }
+
+    # Axis limits for each equation, matching the paper's Figure 3.
+    axis_limits = {
+        "kuramotosivashinsky": ([0.8, 120], [1e-7, 1e5]),
+        "burgers": ([0.8, 120], [1e-6, 1e3]),
+        "reactiondiffusion": ([0.8, 120], [1e-7, 1e2]),
+        "gasdynamics": ([0.8, 120], [1e-7, 1e4]),
+        "advection": ([0.8, 120], [5e-8, 5e-5]),
+        "wave": ([0.8, 120], [5e-8, 5e-5]),
+    }
+
+    if equation not in paper_data:
+        print(f"MSE comparison plot not available for equation '{equation}'. Skipping.")
+        return
+
+    curves_path = rundir / "metrics" / "curves.json"
+    if not curves_path.exists():
+        return
+
+    with curves_path.open("r", encoding="utf-8") as f:
+        curves = json.load(f)
+
+    coeff_mse = np.asarray(curves.get("coeff_mse", []), dtype=float)
+    dt = curves.get("dt")
+
+    if not coeff_mse.size or dt is None:
+        print("MSE comparison plot requires 'coeff_mse' and 'dt' in curves.json. Skipping.")
+        return
+
+    # Add markers to match the style of the paper's plots.
+    styles = {
+        "SINDy (paper)": {"color": "blue", "linestyle": "solid", "marker": "o", "markersize": 5},
+        "Trapping SINDy (paper)": {"color": "orange", "linestyle": "dashed", "marker": "s", "markersize": 5},
+        "Galerkin (paper)": {"color": "green", "linestyle": "dotted", "marker": "^", "markersize": 5},
+        "ML-Galerkin (paper)": {"color": "red", "linestyle": "dashdot", "marker": "x", "markersize": 6},
+    }
+
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=dpi)
+
+    for name, (t_paper, mse_paper) in paper_data[equation].items():
+        ax.plot(t_paper, mse_paper, label=name, **styles[name], markevery=1)
+
+    t_run = np.arange(len(coeff_mse)) * float(dt)
+    ax.plot(t_run, coeff_mse, color="black", linewidth=2.5, label="SINDy")
+
+    ax.set_xscale("log"); ax.set_yscale("log")
+
+    # Apply axis limits to match the paper's formatting
+    if equation in axis_limits:
+        xlim, ylim = axis_limits[equation]
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+
+    ax.set_xlabel("Time"); ax.set_ylabel("Test MSE")
+    title = equation_titles.get(equation, equation.capitalize())
+    ax.set_title(f"Coefficient MSE Comparison for {title}")
+    ax.legend(loc="upper left"); ax.grid(True, which="both", ls="--", alpha=0.5)
+    
+    _savefig(fig, out_dir / "metrics_coeff_mse_comparison.png", dpi=dpi)
+
 def animate_3d_surface(
     q_true: np.ndarray,
     q_pred: np.ndarray,
@@ -721,8 +855,30 @@ def animate_3d_surface(
     light = LightSource(azdeg=225, altdeg=45)
 
     # Determine shared z-axis limits for consistency
-    z_min = min(z_true.min(), z_pred.min())
-    z_max = max(z_true.max(), z_pred.max())
+    # Determine shared z-axis limits for consistency, but constrain the bounds
+    # to be no more than double the true data's range to prevent outliers in
+    # the prediction from making the plot unreadable.
+    z_true_min, z_true_max = z_true.min(), z_true.max()
+    z_pred_min, z_pred_max = z_pred.min(), z_pred.max()
+
+    z_min_unbounded = min(z_true_min, z_pred_min)
+    z_max_unbounded = max(z_true_max, z_pred_max)
+
+    # Define the capped range based on the true data's range.
+    z_true_range = z_true_max - z_true_min
+    # If the true range is zero, use a small default range to avoid a collapsed axis.
+    # The range is set relative to the magnitude of the data.
+    if z_true_range < 1e-9:
+        z_true_range = max(1.0, abs(z_true_max) * 0.2)
+
+    z_true_center = (z_true_max + z_true_min) / 2
+
+    # The allowed range is centered on the true data, with twice the span.
+    z_min_limit = z_true_center - z_true_range
+    z_max_limit = z_true_center + z_true_range
+
+    z_min = max(z_min_unbounded, z_min_limit)
+    z_max = min(z_max_unbounded, z_max_limit)
 
     # Pre-calculate color normalization for colormap-based plots
     if color_mode == "colormap":
@@ -933,6 +1089,12 @@ def generate_all_plots_and_movies(
             rundir=rundir,
             out_dir=fig_dir,
             dpi=cfg.dpi,
+        )
+        plot_mse_comparison_with_paper(
+            rundir=rundir,
+            out_dir=fig_dir,
+            dpi=cfg.dpi,
+            equation=equation,
         )
 
     if getattr(cfg, "movie_3d_surface", False):

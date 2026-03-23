@@ -226,6 +226,7 @@ def run(
         save_json(
             subdirs["metrics"] / "curves.json",
             {
+                "dt": dt,
                 "coeff_mse": err.coeff_mse.tolist(),
                 "field_l2": err.field_l2.tolist(),
                 "field_rel_l2": err.field_rel_l2.tolist(),
