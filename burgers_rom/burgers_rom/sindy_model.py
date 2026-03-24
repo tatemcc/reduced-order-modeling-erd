@@ -71,7 +71,11 @@ def build_library(
 
 
 def build_optimizer(
-    optimizer_name: str, params: Dict[str, Any], n_targets: int
+    optimizer_name: str,
+    params: Dict[str, Any],
+    n_targets: int,
+    poly_order: Optional[int] = None,
+    include_bias: Optional[bool] = None,
 ) -> ps.BaseOptimizer:
     """
     Construct a PySINDy optimizer.
@@ -84,6 +88,10 @@ def build_optimizer(
         Optimizer parameters.
     n_target : int
         Number of targets for TrappingSR3.
+    poly_order : int, optional
+        Polynomial order, required for 'trappingsr3'.
+    include_bias : bool, optional
+        Whether to include bias, required for 'trappingsr3'.
 
     Returns
     -------
@@ -131,8 +139,14 @@ def build_optimizer(
         )
     # TODO: choose better default values
     elif optimizer_name == "trappingsr3":
+        if poly_order is None or include_bias is None:
+            raise ValueError(
+                "poly_order and include_bias must be provided for trappingsr3 optimizer"
+            )
         return ps.TrappingSR3(
             _n_tgts=n_targets,
+            poly_order=poly_order,
+            include_bias=include_bias,
             reg_weight_lam=params.get("threshold", 0.1),  # Mapping threshold to lambda
             eta=params.get("eta", 1.0e5),
             alpha=params.get("alpha", 1e20),
@@ -203,7 +217,13 @@ def fit_sindy_on_coeffs(
     Xdot = dA_dt.T
 
     lib = build_library(poly_order=poly_order, include_bias=include_bias)
-    opt = build_optimizer(optimizer_name=optimizer_name, params=optimizer_params, n_targets=r)
+    opt = build_optimizer(
+        optimizer_name=optimizer_name,
+        params=optimizer_params,
+        n_targets=r,
+        poly_order=poly_order,
+        include_bias=include_bias,
+    )
 
     if feature_names is None:
         feature_names = [f"a{i}" for i in range(r)]

@@ -2,9 +2,9 @@
 name: burgers_rom_local
 seed: 0
 data:
-  equation: burgers
+  equation: kuramotosivashinsky
   structure: grid
-  resolution: medium
+  resolution: low
   split: train
   n_trajectories: 1
   trajectory_ids: [1]
@@ -23,7 +23,7 @@ deriv:
   method: finite_difference
   scheme: central
 sindy:
-  poly_order: 2
+  poly_order: 4
   include_bias: false
   # optimizer: sr3
   # optimizer_params:
@@ -61,5 +61,5 @@ plots:
   enabled: true
   movie_3d_surface: true
   movie_3d_interp_factor: 3
-  movie_3d_mode_contributions: true
+  movie_3d_mode_contributions: false
   movie_3d_parallel: true
