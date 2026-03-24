@@ -49,7 +49,7 @@ sindy:
   optimizer: trappingsr3
   optimizer_params:
     eta: 100
-    threshold: 0.050039
+    threshold: 0.0500391429
     alpha: 100
     beta: 100
     max_iter: 80
@@ -62,3 +62,4 @@ plots:
   movie_3d_surface: true
   movie_3d_interp_factor: 3
   movie_3d_mode_contributions: true
+  movie_3d_parallel: true

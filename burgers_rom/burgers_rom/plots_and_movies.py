@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,6 +24,10 @@ import imageio.v2 as imageio
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.interpolate import RectBivariateSpline
 from matplotlib.colors import LightSource, hsv_to_rgb, Normalize
+import multiprocessing
+import subprocess
+import tempfile
+from tqdm import tqdm
 
 from .config import PlotConfig
 from .pod import PODResult
@@ -752,6 +756,110 @@ def plot_mse_comparison_with_paper(
     
     _savefig(fig, out_dir / "metrics_coeff_mse_comparison.png", dpi=dpi)
 
+def _render_3d_surface_frame_wrapper(args: tuple) -> None:
+    """Helper to unpack arguments for multiprocessing.Pool.map."""
+    return _render_3d_surface_frame(*args)
+
+
+def _render_3d_surface_frame(
+    frame: int,
+    # --- Data for this frame ---
+    q_true_frame: np.ndarray,
+    q_pred_frame: np.ndarray,
+    z_true_frame: np.ndarray,
+    z_pred_frame: np.ndarray,
+    color_data_true_frame: Optional[np.ndarray],
+    color_data_pred_frame: Optional[np.ndarray],
+    # --- Static data & params ---
+    output_path: Path,
+    figsize: Tuple[float, float],
+    dpi: int,
+    x: np.ndarray,
+    y: np.ndarray,
+    x_fine: np.ndarray,
+    y_fine: np.ndarray,
+    xx_fine: np.ndarray,
+    yy_fine: np.ndarray,
+    z_min: float,
+    z_max: float,
+    z_label: str,
+    color_mode: str,
+    cmap_obj: Optional[Any],
+    color_norm: Optional[Normalize],
+    light: LightSource,
+) -> None:
+    """Renders a single frame of the 3D surface animation and saves it to a file."""
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+    ax_true = fig.add_subplot(1, 2, 1, projection='3d')
+    ax_pred = fig.add_subplot(1, 2, 2, projection='3d')
+    title = fig.suptitle(f"Time: {frame}")
+
+    # --- Process and plot TRUE data ---
+    spline_z_true = RectBivariateSpline(y, x, z_true_frame, kx=3, ky=3)
+    z_fine_true = spline_z_true(y_fine, x_fine)
+    illumination_true = light.hillshade(z_fine_true, vert_exag=0.8)
+    rescaled_illumination_true = 0.5 + 0.5 * illumination_true
+
+    if color_mode == "hsv":
+        u_true_frame, v_true_frame = q_true_frame[0], q_true_frame[1]
+        spline_u_true = RectBivariateSpline(y, x, u_true_frame, kx=3, ky=3)
+        spline_v_true = RectBivariateSpline(y, x, v_true_frame, kx=3, ky=3)
+        u_fine_true = spline_u_true(y_fine, x_fine)
+        v_fine_true = spline_v_true(y_fine, x_fine)
+        color_fine_true = np.arctan2(v_fine_true, u_fine_true)
+        hue_true = (color_fine_true + np.pi) / (2 * np.pi)
+        saturation_true = np.ones_like(hue_true)
+        hsv_vertex_true = np.stack([hue_true, saturation_true, rescaled_illumination_true], axis=-1)
+        rgb_vertex_true = hsv_to_rgb(hsv_vertex_true)
+    elif color_mode == "colormap" and color_data_true_frame is not None:
+        spline_color_true = RectBivariateSpline(y, x, color_data_true_frame, kx=3, ky=3)
+        color_fine_true = spline_color_true(y_fine, x_fine)
+        colors_from_map = cmap_obj(color_norm(color_fine_true))[:, :, :3]
+        rgb_vertex_true = colors_from_map * rescaled_illumination_true[..., np.newaxis]
+    else:
+        rgb_vertex_true = light.shade(z_fine_true, cmap=plt.get_cmap('gray'))
+
+    rgb_face_true = (rgb_vertex_true[:-1, :-1, :] + rgb_vertex_true[1:, :-1, :] + rgb_vertex_true[:-1, 1:, :] + rgb_vertex_true[1:, 1:, :]) / 4.0
+    ax_true.set_title("True Field")
+    ax_true.set_zlim(z_min, z_max)
+    ax_true.set_xlabel("x"); ax_true.set_ylabel("y"); ax_true.set_zlabel(z_label)
+    ax_true.plot_surface(xx_fine, yy_fine, z_fine_true, facecolors=rgb_face_true, rstride=1, cstride=1, antialiased=True, shade=False)
+
+    # --- Process and plot PRED data ---
+    spline_z_pred = RectBivariateSpline(y, x, z_pred_frame, kx=3, ky=3)
+    z_fine_pred = spline_z_pred(y_fine, x_fine)
+    illumination_pred = light.hillshade(z_fine_pred, vert_exag=0.8)
+    rescaled_illumination_pred = 0.5 + 0.5 * illumination_pred
+
+    if color_mode == "hsv":
+        u_pred_frame, v_pred_frame = q_pred_frame[0], q_pred_frame[1]
+        spline_u_pred = RectBivariateSpline(y, x, u_pred_frame, kx=3, ky=3)
+        spline_v_pred = RectBivariateSpline(y, x, v_pred_frame, kx=3, ky=3)
+        u_fine_pred = spline_u_pred(y_fine, x_fine)
+        v_fine_pred = spline_v_pred(y_fine, x_fine)
+        color_fine_pred = np.arctan2(v_fine_pred, u_fine_pred)
+        hue_pred = (color_fine_pred + np.pi) / (2 * np.pi)
+        saturation_pred = np.ones_like(hue_pred)
+        hsv_vertex_pred = np.stack([hue_pred, saturation_pred, rescaled_illumination_pred], axis=-1)
+        rgb_vertex_pred = hsv_to_rgb(hsv_vertex_pred)
+    elif color_mode == "colormap" and color_data_pred_frame is not None:
+        spline_color_pred = RectBivariateSpline(y, x, color_data_pred_frame, kx=3, ky=3)
+        color_fine_pred = spline_color_pred(y_fine, x_fine)
+        colors_from_map = cmap_obj(color_norm(color_fine_pred))[:, :, :3]
+        rgb_vertex_pred = colors_from_map * rescaled_illumination_pred[..., np.newaxis]
+    else:
+        rgb_vertex_pred = light.shade(z_fine_pred, cmap=plt.get_cmap('gray'))
+
+    rgb_face_pred = (rgb_vertex_pred[:-1, :-1, :] + rgb_vertex_pred[1:, :-1, :] + rgb_vertex_pred[:-1, 1:, :] + rgb_vertex_pred[1:, 1:, :]) / 4.0
+    ax_pred.set_title("Predicted Field")
+    ax_pred.set_zlim(z_min, z_max)
+    ax_pred.set_xlabel("x"); ax_pred.set_ylabel("y"); ax_pred.set_zlabel(z_label)
+    ax_pred.plot_surface(xx_fine, yy_fine, z_fine_pred, facecolors=rgb_face_pred, rstride=1, cstride=1, antialiased=True, shade=False)
+
+    fig.savefig(output_path)
+    plt.close(fig)
+
+
 def animate_3d_surface(
     q_true: np.ndarray,
     q_pred: np.ndarray,
@@ -760,6 +868,7 @@ def animate_3d_surface(
     fps: int = 15,
     dpi: int = 100,
     interp_factor: int = 3,
+    plot_cfg: Optional[PlotConfig] = None,
 ) -> None:
     """
     Animate a 3D surface plot of fields, with behavior depending on the equation.
@@ -783,10 +892,18 @@ def animate_3d_surface(
         DPI for rendering frames.
     interp_factor : int
         Factor by which to increase grid resolution for interpolation.
+    plot_cfg : PlotConfig, optional
+        Plotting configuration, used to check for parallel execution flags.
     """
     T, C, ny, nx = q_true.shape
 
+    use_parallel = False
+    if plot_cfg is not None:
+        use_parallel = getattr(plot_cfg, "movie_3d_parallel", False)
+
     # --- Data preparation based on equation ---
+    color_data_true: Optional[np.ndarray] = None
+    color_data_pred: Optional[np.ndarray] = None
     if equation == "burgers":
         if C != 2:
             print(f"Skipping 3D surface plot for 'burgers': requires 2 components, found {C}.")
@@ -889,6 +1006,86 @@ def animate_3d_surface(
             color_max = color_min + 1.0
         color_norm = Normalize(vmin=color_min, vmax=color_max)
         cmap_obj = plt.get_cmap(cmap)
+
+    if use_parallel and plot_cfg is not None:
+        n_procs = plot_cfg.movie_3d_parallel_procs
+        if n_procs is None:
+            n_procs = multiprocessing.cpu_count() // 2
+            if n_procs == 0: n_procs = 1 # Ensure at least one process
+        print(f"Generating {T} frames for 3D movie in parallel using {n_procs} processes...")
+
+        # Use 'spawn' context for multiprocessing to avoid fork-safety issues with
+        # matplotlib on Linux systems like Pop!_OS. 'spawn' starts a fresh
+        # process, which is safer but slightly slower to start than the default
+        # 'fork' method. This is the default on Windows and macOS for this reason.
+        mp_context = multiprocessing.get_context("spawn")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            frame_dir = Path(temp_dir)
+            tasks = []
+            for frame in range(T):
+                task_args = (
+                    frame,
+                    q_true[frame],
+                    q_pred[frame],
+                    z_true[frame],
+                    z_pred[frame],
+                    color_data_true[frame] if color_mode == "colormap" else None,
+                    color_data_pred[frame] if color_mode == "colormap" else None,
+                    frame_dir / f"frame_{frame:05d}.png",
+                    (16, 7),
+                    dpi,
+                    x, y, x_fine, y_fine, xx_fine, yy_fine,
+                    z_min, z_max, z_label,
+                    color_mode,
+                    cmap_obj if color_mode == "colormap" else None,
+                    color_norm if color_mode == "colormap" else None,
+                    light,
+                )
+                tasks.append(task_args)
+
+            # Use imap_unordered for a responsive progress bar that updates after each frame.
+            with mp_context.Pool(processes=n_procs) as pool, tqdm(total=T, desc="Rendering 3D frames") as pbar:
+                for _ in pool.imap_unordered(_render_3d_surface_frame_wrapper, tasks):
+                    pbar.update(1)
+
+            print("Stitching frames into movie with ffmpeg...")
+            ffmpeg_cmd = [
+                "ffmpeg",
+                "-y",  # Overwrite output file if it exists
+                "-framerate", str(fps),
+                "-i", str(frame_dir / "frame_%05d.png"),
+                "-c:v", "libx264",
+                "-pix_fmt", "yuv420p",  # For broad player compatibility
+                "-crf", "17",  # Visually lossless quality
+                "-preset", "fast", # Good speed/compression balance
+                str(output_path),
+            ]
+            try:
+                subprocess.run(
+                    ffmpeg_cmd,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                )
+                print(f"Saved 3D surface animation to {output_path}")
+            except FileNotFoundError:
+                print(
+                    "ERROR: `ffmpeg` command not found. "
+                    "Please install ffmpeg to use parallel movie generation."
+                )
+                return
+            except subprocess.CalledProcessError as e:
+                print("ERROR: ffmpeg failed to stitch frames.")
+                print(f"ffmpeg stdout:\n{e.stdout}")
+                print(f"ffmpeg stderr:\n{e.stderr}")
+                return
+        return  # End of parallel execution path
+
+
+    # --- Sequential (original) animation logic ---
+    print(f"Generating 3D surface animation for {T} frames sequentially...")
 
     def update(frame: int):
         ax_true.clear()
@@ -1158,6 +1355,7 @@ def generate_all_plots_and_movies(
             fps=cfg.movie_fps,
             dpi=cfg.dpi,
             interp_factor=interp_factor,
+            plot_cfg=cfg,
         )
 
     if getattr(cfg, "movie_3d_mode_contributions", False):
@@ -1175,15 +1373,16 @@ def generate_all_plots_and_movies(
                 mode_indices=[i],
                 mean_state=mean_state,
             )
-            output_path = contrib_dir / f"pred_mode_{i:02d}_contribution.mp4"
+            output_path = contrib_dir / f"pred_full_vs_mode_{i:02d}_contribution.mp4"
             animate_3d_surface(
-                q_true=rollout.fields_true,
+                q_true=rollout.fields_pred, # Compare to full predicted field
                 q_pred=q_recon,
                 equation=equation,
                 output_path=output_path,
                 fps=cfg.movie_fps,
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
+                plot_cfg=cfg,
             )
 
         print(f"Generating 3D surface movies for cumulative highest mode contributions (r={r})...")
@@ -1196,13 +1395,14 @@ def generate_all_plots_and_movies(
                 mode_indices=mode_indices,
                 mean_state=mean_state,
             )
-            output_path = contrib_dir / f"pred_highest_{k:02d}_modes_contribution.mp4"
+            output_path = contrib_dir / f"pred_full_vs_highest_{k:02d}_modes_contribution.mp4"
             animate_3d_surface(
-                q_true=rollout.fields_true,
+                q_true=rollout.fields_pred, # Compare to full predicted field
                 q_pred=q_recon,
                 equation=equation,
                 output_path=output_path,
                 fps=cfg.movie_fps,
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
+                plot_cfg=cfg,
             )
