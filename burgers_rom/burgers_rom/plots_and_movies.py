@@ -993,6 +993,54 @@ def animate_3d_surface(
     plt.close(fig)
     print(f"Saved 3D surface animation to {output_path}")
 
+def _reconstruct_fields_from_modes(
+    U: np.ndarray,
+    A: np.ndarray,
+    layout: SnapshotLayout,
+    mode_indices: List[int],
+    mean_state: Optional[np.ndarray] = None,
+) -> np.ndarray:
+    """
+    Reconstruct full-state fields from a subset of POD modes and coefficients.
+
+    Parameters
+    ----------
+    U : np.ndarray
+        POD basis of shape (n_state, r).
+    A : np.ndarray
+        POD coefficients of shape (T, r).
+    layout : SnapshotLayout
+        Layout for reshaping.
+    mode_indices : list[int]
+        Indices of the modes to use for reconstruction.
+    mean_state : np.ndarray, optional
+        Mean state vector of shape (n_state,). Added back if provided.
+
+    Returns
+    -------
+    np.ndarray
+        Reconstructed fields of shape (T, C, ny, nx).
+    """
+    T, r = A.shape
+
+    # Select modes
+    U_modes = U[:, mode_indices]  # (n_state, k)
+    A_modes = A[:, mode_indices]  # (T, k)
+
+    # Reconstruct: X_rec = U_modes @ A_modes.T -> (n_state, T)
+    X_rec = U_modes @ A_modes.T
+
+    if mean_state is not None:
+        X_rec += mean_state[:, None]
+
+    # Reshape from (n_state, T) to (T, C, ny, nx)
+    fields = np.empty((T, layout.n_components, layout.ny, layout.nx), dtype=X_rec.dtype)
+    for t in range(T):
+        fields[t] = state_vec_to_fields(X_rec[:, t], layout)
+
+    return fields
+
+
 def generate_all_plots_and_movies(
     cfg: PlotConfig,
     rundir: Path,
@@ -1001,6 +1049,7 @@ def generate_all_plots_and_movies(
     sindy: SINDyFitResult,
     rollout: RolloutResult,
     equation: str,
+    mean_state: Optional[np.ndarray] = None,
 ) -> None:
     """
     Generate all configured plots and movies for a completed run.
@@ -1021,6 +1070,8 @@ def generate_all_plots_and_movies(
         SINDy results.
     rollout : RolloutResult
         Rollout results.
+    mean_state : np.ndarray, optional
+        Mean state vector, if centering was used.
     """
     if not cfg.enabled:
         return
@@ -1108,3 +1159,50 @@ def generate_all_plots_and_movies(
             dpi=cfg.dpi,
             interp_factor=interp_factor,
         )
+
+    if getattr(cfg, "movie_3d_mode_contributions", False):
+        r = pod.r
+        contrib_dir = mov_dir / "3d_mode_contributions"
+        contrib_dir.mkdir(exist_ok=True)
+        interp_factor = getattr(cfg, "movie_3d_interp_factor", 3)
+
+        print(f"Generating 3D surface movies for individual mode contributions (r={r})...")
+        for i in range(r):
+            q_recon = _reconstruct_fields_from_modes(
+                U=pod.U,
+                A=rollout.A_pred,
+                layout=layout,
+                mode_indices=[i],
+                mean_state=mean_state,
+            )
+            output_path = contrib_dir / f"pred_mode_{i:02d}_contribution.mp4"
+            animate_3d_surface(
+                q_true=rollout.fields_true,
+                q_pred=q_recon,
+                equation=equation,
+                output_path=output_path,
+                fps=cfg.movie_fps,
+                dpi=cfg.dpi,
+                interp_factor=interp_factor,
+            )
+
+        print(f"Generating 3D surface movies for cumulative highest mode contributions (r={r})...")
+        for k in range(2, r + 1):
+            mode_indices = list(range(r - k, r))
+            q_recon = _reconstruct_fields_from_modes(
+                U=pod.U,
+                A=rollout.A_pred,
+                layout=layout,
+                mode_indices=mode_indices,
+                mean_state=mean_state,
+            )
+            output_path = contrib_dir / f"pred_highest_{k:02d}_modes_contribution.mp4"
+            animate_3d_surface(
+                q_true=rollout.fields_true,
+                q_pred=q_recon,
+                equation=equation,
+                output_path=output_path,
+                fps=cfg.movie_fps,
+                dpi=cfg.dpi,
+                interp_factor=interp_factor,
+            )

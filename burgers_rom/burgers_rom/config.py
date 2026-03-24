@@ -188,6 +188,7 @@ class PlotConfig:
     # 3D surface movie
     movie_3d_surface: bool = False
     movie_3d_interp_factor: int = 3
+    movie_3d_mode_contributions: bool = False
 
     # field error plots
     metrics_curves: bool = True

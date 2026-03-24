@@ -244,6 +244,7 @@ def run(
             pod=pod,
             sindy=sindy,
             rollout=rollout,
+            mean_state=mean_state,
         )
     
     return RunResult(
