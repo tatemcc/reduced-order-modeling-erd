@@ -764,12 +764,12 @@ def _render_3d_surface_frame_wrapper(args: tuple) -> None:
 def _render_3d_surface_frame(
     frame: int,
     # --- Data for this frame ---
-    q_true_frame: np.ndarray,
-    q_pred_frame: np.ndarray,
-    z_true_frame: np.ndarray,
-    z_pred_frame: np.ndarray,
-    color_data_true_frame: Optional[np.ndarray],
-    color_data_pred_frame: Optional[np.ndarray],
+    q_left_frame: np.ndarray,
+    q_right_frame: Optional[np.ndarray],
+    z_left_frame: np.ndarray,
+    z_right_frame: Optional[np.ndarray],
+    color_data_left_frame: Optional[np.ndarray],
+    color_data_right_frame: Optional[np.ndarray],
     # --- Static data & params ---
     output_path: Path,
     figsize: Tuple[float, float],
@@ -783,6 +783,8 @@ def _render_3d_surface_frame(
     z_min: float,
     z_max: float,
     z_label: str,
+    title_left: str,
+    title_right: str,
     color_mode: str,
     cmap_obj: Optional[Any],
     color_norm: Optional[Normalize],
@@ -790,81 +792,90 @@ def _render_3d_surface_frame(
 ) -> None:
     """Renders a single frame of the 3D surface animation and saves it to a file."""
     fig = plt.figure(figsize=figsize, dpi=dpi)
-    ax_true = fig.add_subplot(1, 2, 1, projection='3d')
-    ax_pred = fig.add_subplot(1, 2, 2, projection='3d')
+    
+    is_dual_plot = q_right_frame is not None
+    if is_dual_plot:
+        ax_left = fig.add_subplot(1, 2, 1, projection='3d')
+        ax_right = fig.add_subplot(1, 2, 2, projection='3d')
+    else:
+        ax_left = fig.add_subplot(1, 1, 1, projection='3d')
+
     title = fig.suptitle(f"Time: {frame}")
 
-    # --- Process and plot TRUE data ---
-    spline_z_true = RectBivariateSpline(y, x, z_true_frame, kx=3, ky=3)
-    z_fine_true = spline_z_true(y_fine, x_fine)
-    illumination_true = light.hillshade(z_fine_true, vert_exag=0.8)
-    rescaled_illumination_true = 0.5 + 0.5 * illumination_true
+    # --- Process and plot LEFT data ---
+    spline_z_left = RectBivariateSpline(y, x, z_left_frame, kx=3, ky=3)
+    z_fine_left = spline_z_left(y_fine, x_fine)
+    illumination_left = light.hillshade(z_fine_left, vert_exag=0.8)
+    rescaled_illumination_left = 0.5 + 0.5 * illumination_left
 
     if color_mode == "hsv":
-        u_true_frame, v_true_frame = q_true_frame[0], q_true_frame[1]
-        spline_u_true = RectBivariateSpline(y, x, u_true_frame, kx=3, ky=3)
-        spline_v_true = RectBivariateSpline(y, x, v_true_frame, kx=3, ky=3)
-        u_fine_true = spline_u_true(y_fine, x_fine)
-        v_fine_true = spline_v_true(y_fine, x_fine)
-        color_fine_true = np.arctan2(v_fine_true, u_fine_true)
-        hue_true = (color_fine_true + np.pi) / (2 * np.pi)
-        saturation_true = np.ones_like(hue_true)
-        hsv_vertex_true = np.stack([hue_true, saturation_true, rescaled_illumination_true], axis=-1)
-        rgb_vertex_true = hsv_to_rgb(hsv_vertex_true)
-    elif color_mode == "colormap" and color_data_true_frame is not None:
-        spline_color_true = RectBivariateSpline(y, x, color_data_true_frame, kx=3, ky=3)
-        color_fine_true = spline_color_true(y_fine, x_fine)
-        colors_from_map = cmap_obj(color_norm(color_fine_true))[:, :, :3]
-        rgb_vertex_true = colors_from_map * rescaled_illumination_true[..., np.newaxis]
+        u_left_frame, v_left_frame = q_left_frame[0], q_left_frame[1]
+        spline_u_left = RectBivariateSpline(y, x, u_left_frame, kx=3, ky=3)
+        spline_v_left = RectBivariateSpline(y, x, v_left_frame, kx=3, ky=3)
+        u_fine_left = spline_u_left(y_fine, x_fine)
+        v_fine_left = spline_v_left(y_fine, x_fine)
+        color_fine_left = np.arctan2(v_fine_left, u_fine_left)
+        hue_left = (color_fine_left + np.pi) / (2 * np.pi)
+        saturation_left = np.ones_like(hue_left)
+        hsv_vertex_left = np.stack([hue_left, saturation_left, rescaled_illumination_left], axis=-1)
+        rgb_vertex_left = hsv_to_rgb(hsv_vertex_left)
+    elif color_mode == "colormap" and color_data_left_frame is not None:
+        spline_color_left = RectBivariateSpline(y, x, color_data_left_frame, kx=3, ky=3)
+        color_fine_left = spline_color_left(y_fine, x_fine)
+        colors_from_map = cmap_obj(color_norm(color_fine_left))[:, :, :3]
+        rgb_vertex_left = colors_from_map * rescaled_illumination_left[..., np.newaxis]
     else:
-        rgb_vertex_true = light.shade(z_fine_true, cmap=plt.get_cmap('gray'))
+        rgb_vertex_left = light.shade(z_fine_left, cmap=plt.get_cmap('gray'))
 
-    rgb_face_true = (rgb_vertex_true[:-1, :-1, :] + rgb_vertex_true[1:, :-1, :] + rgb_vertex_true[:-1, 1:, :] + rgb_vertex_true[1:, 1:, :]) / 4.0
-    ax_true.set_title("True Field")
-    ax_true.set_zlim(z_min, z_max)
-    ax_true.set_xlabel("x"); ax_true.set_ylabel("y"); ax_true.set_zlabel(z_label)
-    ax_true.plot_surface(xx_fine, yy_fine, z_fine_true, facecolors=rgb_face_true, rstride=1, cstride=1, antialiased=True, shade=False)
+    rgb_face_left = (rgb_vertex_left[:-1, :-1, :] + rgb_vertex_left[1:, :-1, :] + rgb_vertex_left[:-1, 1:, :] + rgb_vertex_left[1:, 1:, :]) / 4.0
+    ax_left.set_title(title_left)
+    ax_left.set_zlim(z_min, z_max)
+    ax_left.set_xlabel("x"); ax_left.set_ylabel("y"); ax_left.set_zlabel(z_label)
+    ax_left.plot_surface(xx_fine, yy_fine, z_fine_left, facecolors=rgb_face_left, rstride=1, cstride=1, antialiased=True, shade=False)
 
-    # --- Process and plot PRED data ---
-    spline_z_pred = RectBivariateSpline(y, x, z_pred_frame, kx=3, ky=3)
-    z_fine_pred = spline_z_pred(y_fine, x_fine)
-    illumination_pred = light.hillshade(z_fine_pred, vert_exag=0.8)
-    rescaled_illumination_pred = 0.5 + 0.5 * illumination_pred
+    if is_dual_plot:
+        # --- Process and plot RIGHT data ---
+        spline_z_right = RectBivariateSpline(y, x, z_right_frame, kx=3, ky=3)
+        z_fine_right = spline_z_right(y_fine, x_fine)
+        illumination_right = light.hillshade(z_fine_right, vert_exag=0.8)
+        rescaled_illumination_right = 0.5 + 0.5 * illumination_right
 
-    if color_mode == "hsv":
-        u_pred_frame, v_pred_frame = q_pred_frame[0], q_pred_frame[1]
-        spline_u_pred = RectBivariateSpline(y, x, u_pred_frame, kx=3, ky=3)
-        spline_v_pred = RectBivariateSpline(y, x, v_pred_frame, kx=3, ky=3)
-        u_fine_pred = spline_u_pred(y_fine, x_fine)
-        v_fine_pred = spline_v_pred(y_fine, x_fine)
-        color_fine_pred = np.arctan2(v_fine_pred, u_fine_pred)
-        hue_pred = (color_fine_pred + np.pi) / (2 * np.pi)
-        saturation_pred = np.ones_like(hue_pred)
-        hsv_vertex_pred = np.stack([hue_pred, saturation_pred, rescaled_illumination_pred], axis=-1)
-        rgb_vertex_pred = hsv_to_rgb(hsv_vertex_pred)
-    elif color_mode == "colormap" and color_data_pred_frame is not None:
-        spline_color_pred = RectBivariateSpline(y, x, color_data_pred_frame, kx=3, ky=3)
-        color_fine_pred = spline_color_pred(y_fine, x_fine)
-        colors_from_map = cmap_obj(color_norm(color_fine_pred))[:, :, :3]
-        rgb_vertex_pred = colors_from_map * rescaled_illumination_pred[..., np.newaxis]
-    else:
-        rgb_vertex_pred = light.shade(z_fine_pred, cmap=plt.get_cmap('gray'))
+        if color_mode == "hsv":
+            u_right_frame, v_right_frame = q_right_frame[0], q_right_frame[1]
+            spline_u_right = RectBivariateSpline(y, x, u_right_frame, kx=3, ky=3)
+            spline_v_right = RectBivariateSpline(y, x, v_right_frame, kx=3, ky=3)
+            u_fine_right = spline_u_right(y_fine, x_fine)
+            v_fine_right = spline_v_right(y_fine, x_fine)
+            color_fine_right = np.arctan2(v_fine_right, u_fine_right)
+            hue_right = (color_fine_right + np.pi) / (2 * np.pi)
+            saturation_right = np.ones_like(hue_right)
+            hsv_vertex_right = np.stack([hue_right, saturation_right, rescaled_illumination_right], axis=-1)
+            rgb_vertex_right = hsv_to_rgb(hsv_vertex_right)
+        elif color_mode == "colormap" and color_data_right_frame is not None:
+            spline_color_right = RectBivariateSpline(y, x, color_data_right_frame, kx=3, ky=3)
+            color_fine_right = spline_color_right(y_fine, x_fine)
+            colors_from_map = cmap_obj(color_norm(color_fine_right))[:, :, :3]
+            rgb_vertex_right = colors_from_map * rescaled_illumination_right[..., np.newaxis]
+        else:
+            rgb_vertex_right = light.shade(z_fine_right, cmap=plt.get_cmap('gray'))
 
-    rgb_face_pred = (rgb_vertex_pred[:-1, :-1, :] + rgb_vertex_pred[1:, :-1, :] + rgb_vertex_pred[:-1, 1:, :] + rgb_vertex_pred[1:, 1:, :]) / 4.0
-    ax_pred.set_title("Predicted Field")
-    ax_pred.set_zlim(z_min, z_max)
-    ax_pred.set_xlabel("x"); ax_pred.set_ylabel("y"); ax_pred.set_zlabel(z_label)
-    ax_pred.plot_surface(xx_fine, yy_fine, z_fine_pred, facecolors=rgb_face_pred, rstride=1, cstride=1, antialiased=True, shade=False)
+        rgb_face_right = (rgb_vertex_right[:-1, :-1, :] + rgb_vertex_right[1:, :-1, :] + rgb_vertex_right[:-1, 1:, :] + rgb_vertex_right[1:, 1:, :]) / 4.0
+        ax_right.set_title(title_right)
+        ax_right.set_zlim(z_min, z_max)
+        ax_right.set_xlabel("x"); ax_right.set_ylabel("y"); ax_right.set_zlabel(z_label)
+        ax_right.plot_surface(xx_fine, yy_fine, z_fine_right, facecolors=rgb_face_right, rstride=1, cstride=1, antialiased=True, shade=False)
 
     fig.savefig(output_path)
     plt.close(fig)
 
 
 def animate_3d_surface(
-    q_true: np.ndarray,
-    q_pred: np.ndarray,
+    q_left: np.ndarray,
     equation: str,
     output_path: Path,
+    q_right: Optional[np.ndarray] = None,
+    title_left: str = "Field",
+    title_right: str = "Predicted Field",
     fps: int = 15,
     dpi: int = 100,
     interp_factor: int = 3,
@@ -878,10 +889,10 @@ def animate_3d_surface(
 
     Parameters
     ----------
-    q_true : np.ndarray
-        Ground truth trajectory of shape (T, C, ny, nx).
-    q_pred : np.ndarray
-        Predicted trajectory of shape (T, C, ny, nx).
+    q_left : np.ndarray
+        Left (or only) trajectory of shape (T, C, ny, nx).
+    q_right : np.ndarray, optional
+        Right trajectory of shape (T, C, ny, nx). If None, a single plot is made.
     equation : str
         Name of the equation, e.g., 'burgers'.
     output_path : Path
@@ -895,7 +906,11 @@ def animate_3d_surface(
     plot_cfg : PlotConfig, optional
         Plotting configuration, used to check for parallel execution flags.
     """
-    T, C, ny, nx = q_true.shape
+    T, C, ny, nx = q_left.shape
+    is_dual_plot = q_right is not None
+
+    if is_dual_plot and q_right.shape != q_left.shape:
+        raise ValueError("q_left and q_right must have the same shape.")
 
     use_parallel = False
     if plot_cfg is not None:
@@ -903,15 +918,15 @@ def animate_3d_surface(
 
     # --- Data preparation based on equation ---
     color_data_true: Optional[np.ndarray] = None
-    color_data_pred: Optional[np.ndarray] = None
+    color_data_right: Optional[np.ndarray] = None
     if equation == "burgers":
         if C != 2:
             print(f"Skipping 3D surface plot for 'burgers': requires 2 components, found {C}.")
             return
         
         # Height data: vorticity
-        z_true = compute_vorticity(q_true)
-        z_pred = compute_vorticity(q_pred)
+        z_left = compute_vorticity(q_left)
+        z_right = compute_vorticity(q_right) if is_dual_plot else None
 
         # Color data (velocity angle) is handled inside the update loop
         # by interpolating u and v components.
@@ -925,14 +940,15 @@ def animate_3d_surface(
             return
         
         # Height is the field value itself
-        z_true = q_true[:, 0]
-        z_pred = q_pred[:, 0]
+        z_left = q_left[:, 0]
+        z_right = q_right[:, 0] if is_dual_plot else None
 
         # Color is the magnitude of the spatial gradient
-        grad_true_y, grad_true_x = np.gradient(z_true, axis=(1, 2))
+        grad_true_y, grad_true_x = np.gradient(z_left, axis=(1, 2))
         color_data_true = np.sqrt(grad_true_x**2 + grad_true_y**2)
-        grad_pred_y, grad_pred_x = np.gradient(z_pred, axis=(1, 2))
-        color_data_pred = np.sqrt(grad_pred_x**2 + grad_pred_y**2)
+        if is_dual_plot:
+            grad_pred_y, grad_pred_x = np.gradient(z_right, axis=(1, 2))
+            color_data_right = np.sqrt(grad_pred_x**2 + grad_pred_y**2)
 
         z_label = "Field Value u(x,y)"
         color_mode = "colormap"
@@ -944,8 +960,8 @@ def animate_3d_surface(
             return
         
         # Height is pressure, color is velocity magnitude
-        z_true, color_data_true = compute_gasdynamics_vars(q_true)
-        z_pred, color_data_pred = compute_gasdynamics_vars(q_pred)
+        z_left, color_data_true = compute_gasdynamics_vars(q_left)
+        z_right, color_data_right = (compute_gasdynamics_vars(q_right) if is_dual_plot else (None, None))
 
         z_label = "Pressure"
         color_mode = "colormap"
@@ -963,9 +979,13 @@ def animate_3d_surface(
     xx_fine, yy_fine = np.meshgrid(x_fine, y_fine)
 
     # --- Plotting setup ---
-    fig = plt.figure(figsize=(16, 7), dpi=dpi)
-    ax_true = fig.add_subplot(1, 2, 1, projection='3d')
-    ax_pred = fig.add_subplot(1, 2, 2, projection='3d')
+    figsize = (16, 7) if is_dual_plot else (8, 7)
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+    if is_dual_plot:
+        ax_left = fig.add_subplot(1, 2, 1, projection='3d')
+        ax_right = fig.add_subplot(1, 2, 2, projection='3d')
+    else:
+        ax_left = fig.add_subplot(1, 1, 1, projection='3d')
     title = fig.suptitle("Time: 0")
 
     # Create a light source for manual shading
@@ -975,32 +995,38 @@ def animate_3d_surface(
     # Determine shared z-axis limits for consistency, but constrain the bounds
     # to be no more than double the true data's range to prevent outliers in
     # the prediction from making the plot unreadable.
-    z_true_min, z_true_max = z_true.min(), z_true.max()
-    z_pred_min, z_pred_max = z_pred.min(), z_pred.max()
+    z_left_min, z_left_max = z_left.min(), z_left.max()
+    z_min_unbounded = z_left_min
+    z_max_unbounded = z_left_max
 
-    z_min_unbounded = min(z_true_min, z_pred_min)
-    z_max_unbounded = max(z_true_max, z_pred_max)
+    if is_dual_plot:
+        z_right_min, z_right_max = z_right.min(), z_right.max()
+        z_min_unbounded = min(z_left_min, z_right_min)
+        z_max_unbounded = max(z_left_max, z_right_max)
 
     # Define the capped range based on the true data's range.
-    z_true_range = z_true_max - z_true_min
+    z_left_range = z_left_max - z_left_min
     # If the true range is zero, use a small default range to avoid a collapsed axis.
     # The range is set relative to the magnitude of the data.
-    if z_true_range < 1e-9:
-        z_true_range = max(1.0, abs(z_true_max) * 0.2)
+    if z_left_range < 1e-9:
+        z_left_range = max(1.0, abs(z_left_max) * 0.2)
 
-    z_true_center = (z_true_max + z_true_min) / 2
+    z_left_center = (z_left_max + z_left_min) / 2
 
     # The allowed range is centered on the true data, with twice the span.
-    z_min_limit = z_true_center - z_true_range
-    z_max_limit = z_true_center + z_true_range
+    z_min_limit = z_left_center - z_left_range
+    z_max_limit = z_left_center + z_left_range
 
     z_min = max(z_min_unbounded, z_min_limit)
     z_max = min(z_max_unbounded, z_max_limit)
 
     # Pre-calculate color normalization for colormap-based plots
     if color_mode == "colormap":
-        color_min = min(color_data_true.min(), color_data_pred.min())
-        color_max = max(color_data_true.max(), color_data_pred.max())
+        color_min = color_data_true.min()
+        color_max = color_data_true.max()
+        if is_dual_plot:
+            color_min = min(color_min, color_data_right.min())
+            color_max = max(color_max, color_data_right.max())
         # Handle case where max == min to avoid division by zero
         if color_max - color_min < 1e-9:
             color_max = color_min + 1.0
@@ -1026,17 +1052,19 @@ def animate_3d_surface(
             for frame in range(T):
                 task_args = (
                     frame,
-                    q_true[frame],
-                    q_pred[frame],
-                    z_true[frame],
-                    z_pred[frame],
+                    q_left[frame],
+                    q_right[frame] if is_dual_plot else None,
+                    z_left[frame],
+                    z_right[frame] if is_dual_plot else None,
                     color_data_true[frame] if color_mode == "colormap" else None,
-                    color_data_pred[frame] if color_mode == "colormap" else None,
+                    color_data_right[frame] if is_dual_plot and color_mode == "colormap" else None,
                     frame_dir / f"frame_{frame:05d}.png",
-                    (16, 7),
+                    figsize,
                     dpi,
                     x, y, x_fine, y_fine, xx_fine, yy_fine,
                     z_min, z_max, z_label,
+                    title_left,
+                    title_right,
                     color_mode,
                     cmap_obj if color_mode == "colormap" else None,
                     color_norm if color_mode == "colormap" else None,
@@ -1088,100 +1116,102 @@ def animate_3d_surface(
     print(f"Generating 3D surface animation for {T} frames sequentially...")
 
     def update(frame: int):
-        ax_true.clear()
-        ax_pred.clear()
+        ax_left.clear()
+        if is_dual_plot:
+            ax_right.clear()
         
         title.set_text(f"Time: {frame}")
 
-        # --- Process and plot TRUE data ---
+        # --- Process and plot LEFT data ---
         # Interpolate height (vorticity)
-        spline_z_true = RectBivariateSpline(y, x, z_true[frame], kx=3, ky=3)
-        z_fine_true = spline_z_true(y_fine, x_fine)
+        spline_z_left = RectBivariateSpline(y, x, z_left[frame], kx=3, ky=3)
+        z_fine_left = spline_z_left(y_fine, x_fine)
 
         # --- Manually combine color (from angle) and shading (from height) ---
-        illumination_true = light.hillshade(z_fine_true, vert_exag=0.8)
-        rescaled_illumination_true = 0.5 + 0.5 * illumination_true
+        illumination_left = light.hillshade(z_fine_left, vert_exag=0.8)
+        rescaled_illumination_left = 0.5 + 0.5 * illumination_left
 
         if color_mode == "hsv":
             # Interpolate color (velocity components) and compute angle
-            u_true_frame, v_true_frame = q_true[frame, 0], q_true[frame, 1]
-            spline_u_true = RectBivariateSpline(y, x, u_true_frame, kx=3, ky=3)
-            spline_v_true = RectBivariateSpline(y, x, v_true_frame, kx=3, ky=3)
-            u_fine_true = spline_u_true(y_fine, x_fine)
-            v_fine_true = spline_v_true(y_fine, x_fine)
-            color_fine_true = np.arctan2(v_fine_true, u_fine_true)
+            u_left_frame, v_left_frame = q_left[frame, 0], q_left[frame, 1]
+            spline_u_left = RectBivariateSpline(y, x, u_left_frame, kx=3, ky=3)
+            spline_v_left = RectBivariateSpline(y, x, v_left_frame, kx=3, ky=3)
+            u_fine_left = spline_u_left(y_fine, x_fine)
+            v_fine_left = spline_v_left(y_fine, x_fine)
+            color_fine_left = np.arctan2(v_fine_left, u_fine_left)
 
             # 1. Calculate per-vertex hue from velocity angle.
-            hue_true = (color_fine_true + np.pi) / (2 * np.pi)
+            hue_left = (color_fine_left + np.pi) / (2 * np.pi)
             # 2. Calculate per-vertex saturation (full saturation).
-            saturation_true = np.ones_like(hue_true)
+            saturation_left = np.ones_like(hue_left)
             # 3. Combine into an HSV array and convert to RGB. This gives per-vertex colors.
-            hsv_vertex_true = np.stack([hue_true, saturation_true, rescaled_illumination_true], axis=-1)
-            rgb_vertex_true = hsv_to_rgb(hsv_vertex_true)
+            hsv_vertex_left = np.stack([hue_left, saturation_left, rescaled_illumination_left], axis=-1)
+            rgb_vertex_left = hsv_to_rgb(hsv_vertex_left)
 
         elif color_mode == "colormap":
             # Interpolate scalar color data
-            spline_color_true = RectBivariateSpline(y, x, color_data_true[frame], kx=3, ky=3)
-            color_fine_true = spline_color_true(y_fine, x_fine)
+            spline_color_left = RectBivariateSpline(y, x, color_data_true[frame], kx=3, ky=3)
+            color_fine_left = spline_color_left(y_fine, x_fine)
 
             # 1. Get RGB values from colormap using pre-calculated normalization.
-            colors_from_map = cmap_obj(color_norm(color_fine_true))[:, :, :3]  # Drop alpha
+            colors_from_map = cmap_obj(color_norm(color_fine_left))[:, :, :3]  # Drop alpha
             # 2. Modulate brightness with illumination to get per-vertex colors.
-            rgb_vertex_true = colors_from_map * rescaled_illumination_true[..., np.newaxis]
+            rgb_vertex_left = colors_from_map * rescaled_illumination_left[..., np.newaxis]
 
         else:
             # Fallback to simple shading if color mode is unknown
-            rgb_vertex_true = light.shade(z_fine_true, cmap=plt.get_cmap('gray'))
+            rgb_vertex_left = light.shade(z_fine_left, cmap=plt.get_cmap('gray'))
 
         # To fix the "blue and orange" issue, we provide explicit face colors
         # by averaging the colors of the four vertices of each face. This is more robust.
-        rgb_face_true = (rgb_vertex_true[:-1, :-1, :] + rgb_vertex_true[1:, :-1, :] + rgb_vertex_true[:-1, 1:, :] + rgb_vertex_true[1:, 1:, :]) / 4.0
+        rgb_face_left = (rgb_vertex_left[:-1, :-1, :] + rgb_vertex_left[1:, :-1, :] + rgb_vertex_left[:-1, 1:, :] + rgb_vertex_left[1:, 1:, :]) / 4.0
 
-        ax_true.set_title("True Field")
-        ax_true.set_zlim(z_min, z_max)
-        ax_true.set_xlabel("x"); ax_true.set_ylabel("y"); ax_true.set_zlabel(z_label)
-        ax_true.plot_surface(xx_fine, yy_fine, z_fine_true, facecolors=rgb_face_true, rstride=1, cstride=1, antialiased=True, shade=False)
+        ax_left.set_title(title_left)
+        ax_left.set_zlim(z_min, z_max)
+        ax_left.set_xlabel("x"); ax_left.set_ylabel("y"); ax_left.set_zlabel(z_label)
+        ax_left.plot_surface(xx_fine, yy_fine, z_fine_left, facecolors=rgb_face_left, rstride=1, cstride=1, antialiased=True, shade=False)
 
-        # --- Process and plot PRED data ---
-        # Interpolate height (vorticity)
-        spline_z_pred = RectBivariateSpline(y, x, z_pred[frame], kx=3, ky=3)
-        z_fine_pred = spline_z_pred(y_fine, x_fine)
+        if is_dual_plot:
+            # --- Process and plot RIGHT data ---
+            # Interpolate height (vorticity)
+            spline_z_right = RectBivariateSpline(y, x, z_right[frame], kx=3, ky=3)
+            z_fine_right = spline_z_right(y_fine, x_fine)
 
-        # --- Manually combine color and shading for predicted data ---
-        illumination_pred = light.hillshade(z_fine_pred, vert_exag=0.8)
-        rescaled_illumination_pred = 0.5 + 0.5 * illumination_pred
+            # --- Manually combine color and shading for predicted data ---
+            illumination_right = light.hillshade(z_fine_right, vert_exag=0.8)
+            rescaled_illumination_right = 0.5 + 0.5 * illumination_right
 
-        if color_mode == "hsv":
-            u_pred_frame, v_pred_frame = q_pred[frame, 0], q_pred[frame, 1]
-            spline_u_pred = RectBivariateSpline(y, x, u_pred_frame, kx=3, ky=3)
-            spline_v_pred = RectBivariateSpline(y, x, v_pred_frame, kx=3, ky=3)
-            u_fine_pred = spline_u_pred(y_fine, x_fine)
-            v_fine_pred = spline_v_pred(y_fine, x_fine)
-            color_fine_pred = np.arctan2(v_fine_pred, u_fine_pred)
+            if color_mode == "hsv":
+                u_right_frame, v_right_frame = q_right[frame, 0], q_right[frame, 1]
+                spline_u_right = RectBivariateSpline(y, x, u_right_frame, kx=3, ky=3)
+                spline_v_right = RectBivariateSpline(y, x, v_right_frame, kx=3, ky=3)
+                u_fine_right = spline_u_right(y_fine, x_fine)
+                v_fine_right = spline_v_right(y_fine, x_fine)
+                color_fine_right = np.arctan2(v_fine_right, u_fine_right)
 
-            hue_pred = (color_fine_pred + np.pi) / (2 * np.pi)
-            saturation_pred = np.ones_like(hue_pred)
-            hsv_vertex_pred = np.stack([hue_pred, saturation_pred, rescaled_illumination_pred], axis=-1)
-            rgb_vertex_pred = hsv_to_rgb(hsv_vertex_pred)
+                hue_right = (color_fine_right + np.pi) / (2 * np.pi)
+                saturation_right = np.ones_like(hue_right)
+                hsv_vertex_right = np.stack([hue_right, saturation_right, rescaled_illumination_right], axis=-1)
+                rgb_vertex_right = hsv_to_rgb(hsv_vertex_right)
 
-        elif color_mode == "colormap":
-            spline_color_pred = RectBivariateSpline(y, x, color_data_pred[frame], kx=3, ky=3)
-            color_fine_pred = spline_color_pred(y_fine, x_fine)
+            elif color_mode == "colormap":
+                spline_color_right = RectBivariateSpline(y, x, color_data_right[frame], kx=3, ky=3)
+                color_fine_right = spline_color_right(y_fine, x_fine)
 
-            colors_from_map = cmap_obj(color_norm(color_fine_pred))[:, :, :3]
-            rgb_vertex_pred = colors_from_map * rescaled_illumination_pred[..., np.newaxis]
+                colors_from_map = cmap_obj(color_norm(color_fine_right))[:, :, :3]
+                rgb_vertex_right = colors_from_map * rescaled_illumination_right[..., np.newaxis]
 
-        else:
-            rgb_vertex_pred = light.shade(z_fine_pred, cmap=plt.get_cmap('gray'))
+            else:
+                rgb_vertex_right = light.shade(z_fine_right, cmap=plt.get_cmap('gray'))
 
-        rgb_face_pred = (rgb_vertex_pred[:-1, :-1, :] + rgb_vertex_pred[1:, :-1, :] + rgb_vertex_pred[:-1, 1:, :] + rgb_vertex_pred[1:, 1:, :]) / 4.0
+            rgb_face_right = (rgb_vertex_right[:-1, :-1, :] + rgb_vertex_right[1:, :-1, :] + rgb_vertex_right[:-1, 1:, :] + rgb_vertex_right[1:, 1:, :]) / 4.0
 
-        ax_pred.set_title("Predicted Field")
-        ax_pred.set_zlim(z_min, z_max)
-        ax_pred.set_xlabel("x"); ax_pred.set_ylabel("y"); ax_pred.set_zlabel(z_label)
-        ax_pred.plot_surface(xx_fine, yy_fine, z_fine_pred, facecolors=rgb_face_pred, rstride=1, cstride=1, antialiased=True, shade=False)
+            ax_right.set_title(title_right)
+            ax_right.set_zlim(z_min, z_max)
+            ax_right.set_xlabel("x"); ax_right.set_ylabel("y"); ax_right.set_zlabel(z_label)
+            ax_right.plot_surface(xx_fine, yy_fine, z_fine_right, facecolors=rgb_face_right, rstride=1, cstride=1, antialiased=True, shade=False)
 
-        return [ax_true, ax_pred]
+        return [ax_left, ax_right] if is_dual_plot else [ax_left]
 
     # Create and save animation
     ani = animation.FuncAnimation(fig, update, frames=T, blit=False, interval=1000 / fps)
@@ -1196,6 +1226,7 @@ def _reconstruct_fields_from_modes(
     layout: SnapshotLayout,
     mode_indices: List[int],
     mean_state: Optional[np.ndarray] = None,
+    add_mean: bool = True,
 ) -> np.ndarray:
     """
     Reconstruct full-state fields from a subset of POD modes and coefficients.
@@ -1212,6 +1243,8 @@ def _reconstruct_fields_from_modes(
         Indices of the modes to use for reconstruction.
     mean_state : np.ndarray, optional
         Mean state vector of shape (n_state,). Added back if provided.
+    add_mean : bool
+        If True and mean_state is provided, add the mean back to the reconstruction.
 
     Returns
     -------
@@ -1227,7 +1260,7 @@ def _reconstruct_fields_from_modes(
     # Reconstruct: X_rec = U_modes @ A_modes.T -> (n_state, T)
     X_rec = U_modes @ A_modes.T
 
-    if mean_state is not None:
+    if add_mean and mean_state is not None:
         X_rec += mean_state[:, None]
 
     # Reshape from (n_state, T) to (T, C, ny, nx)
@@ -1348,10 +1381,12 @@ def generate_all_plots_and_movies(
     if getattr(cfg, "movie_3d_surface", False):
         interp_factor = getattr(cfg, "movie_3d_interp_factor", 3)
         animate_3d_surface(
-            q_true=rollout.fields_true,
-            q_pred=rollout.fields_pred,
+            q_left=rollout.fields_true,
+            q_right=rollout.fields_pred,
             equation=equation,
             output_path=mov_dir / "rollout_3d_surface.mp4",
+            title_left="True Field",
+            title_right="Predicted Field",
             fps=cfg.movie_fps,
             dpi=cfg.dpi,
             interp_factor=interp_factor,
@@ -1364,43 +1399,62 @@ def generate_all_plots_and_movies(
         contrib_dir.mkdir(exist_ok=True)
         interp_factor = getattr(cfg, "movie_3d_interp_factor", 3)
 
-        print(f"Generating 3D surface movies for individual mode contributions (r={r})...")
-        for i in range(r):
-            q_recon = _reconstruct_fields_from_modes(
-                U=pod.U,
-                A=rollout.A_pred,
-                layout=layout,
-                mode_indices=[i],
-                mean_state=mean_state,
-            )
-            output_path = contrib_dir / f"pred_full_vs_mode_{i:02d}_contribution.mp4"
+        # Movie of just the mean state
+        if mean_state is not None:
+            print("Generating 3D surface movie for true mean state...")
+            # Repeat mean state T times to create a "movie"
+            T = rollout.A_true.shape[0]
+            mean_field = state_vec_to_fields(mean_state, layout)
+            mean_field_movie = np.repeat(mean_field[np.newaxis, ...], T, axis=0)
+            output_path = contrib_dir / "true_mean_state.mp4"
             animate_3d_surface(
-                q_true=rollout.fields_pred, # Compare to full predicted field
-                q_pred=q_recon,
+                q_left=mean_field_movie,
                 equation=equation,
                 output_path=output_path,
+                title_left="True Mean State",
                 fps=cfg.movie_fps,
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
                 plot_cfg=cfg,
             )
 
-        print(f"Generating 3D surface movies for cumulative highest mode contributions (r={r})...")
+        print(f"Generating 3D surface movies for individual true mode contributions (r={r})...")
+        for i in range(r):
+            q_recon = _reconstruct_fields_from_modes(
+                U=pod.U,
+                A=rollout.A_true,
+                layout=layout,
+                mode_indices=[i],
+                add_mean=False,  # Show mode contribution only, not relative to mean
+            )
+            output_path = contrib_dir / f"true_mode_{i:02d}_contribution.mp4"
+            animate_3d_surface(
+                q_left=q_recon,
+                equation=equation,
+                output_path=output_path,
+                title_left=f"True Mode {i} Contribution",
+                fps=cfg.movie_fps,
+                dpi=cfg.dpi,
+                interp_factor=interp_factor,
+                plot_cfg=cfg,
+            )
+
+        print(f"Generating 3D surface movies for cumulative highest true mode contributions (r={r})...")
         for k in range(2, r + 1):
             mode_indices = list(range(r - k, r))
             q_recon = _reconstruct_fields_from_modes(
                 U=pod.U,
-                A=rollout.A_pred,
+                A=rollout.A_true,
                 layout=layout,
                 mode_indices=mode_indices,
-                mean_state=mean_state,
+                add_mean=False, # Show mode contribution only
             )
-            output_path = contrib_dir / f"pred_full_vs_highest_{k:02d}_modes_contribution.mp4"
+            output_path = contrib_dir / f"true_highest_{k:02d}_modes_contribution.mp4"
             animate_3d_surface(
-                q_true=rollout.fields_pred, # Compare to full predicted field
-                q_pred=q_recon,
+                q_left=q_recon,
                 equation=equation,
                 output_path=output_path,
+                title_left=f"True Highest {k} Modes Contribution",
                 fps=cfg.movie_fps,
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
