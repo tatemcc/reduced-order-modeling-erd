@@ -1393,6 +1393,20 @@ def generate_all_plots_and_movies(
             plot_cfg=cfg,
         )
 
+        # Movie of the error field
+        print("Generating 3D surface movie for error field...")
+        error_field = rollout.fields_pred - rollout.fields_true
+        animate_3d_surface(
+            q_left=error_field,
+            equation=equation,
+            output_path=mov_dir / "rollout_3d_error_surface.mp4",
+            title_left="Error Field (Pred - True)",
+            fps=cfg.movie_fps,
+            dpi=cfg.dpi,
+            interp_factor=interp_factor,
+            plot_cfg=cfg,
+        )
+
     if getattr(cfg, "movie_3d_mode_contributions", False):
         r = pod.r
         contrib_dir = mov_dir / "3d_mode_contributions"
@@ -1412,6 +1426,50 @@ def generate_all_plots_and_movies(
                 equation=equation,
                 output_path=output_path,
                 title_left="True Mean State",
+                fps=cfg.movie_fps,
+                dpi=cfg.dpi,
+                interp_factor=interp_factor,
+                plot_cfg=cfg,
+            )
+
+        # --- Predicted Mode Contributions ---
+        print(f"Generating 3D surface movies for individual predicted mode contributions (r={r})...")
+        for i in range(r):
+            q_recon = _reconstruct_fields_from_modes(
+                U=pod.U,
+                A=rollout.A_pred, # Use predicted coefficients
+                layout=layout,
+                mode_indices=[i],
+                add_mean=False,
+            )
+            output_path = contrib_dir / f"pred_mode_{i:02d}_contribution.mp4"
+            animate_3d_surface(
+                q_left=q_recon,
+                equation=equation,
+                output_path=output_path,
+                title_left=f"Predicted Mode {i} Contribution",
+                fps=cfg.movie_fps,
+                dpi=cfg.dpi,
+                interp_factor=interp_factor,
+                plot_cfg=cfg,
+            )
+
+        print(f"Generating 3D surface movies for cumulative highest predicted mode contributions (r={r})...")
+        for k in range(2, r + 1):
+            mode_indices = list(range(r - k, r))
+            q_recon = _reconstruct_fields_from_modes(
+                U=pod.U,
+                A=rollout.A_pred, # Use predicted coefficients
+                layout=layout,
+                mode_indices=mode_indices,
+                add_mean=False,
+            )
+            output_path = contrib_dir / f"pred_highest_{k:02d}_modes_contribution.mp4"
+            animate_3d_surface(
+                q_left=q_recon,
+                equation=equation,
+                output_path=output_path,
+                title_left=f"Predicted Highest {k} Modes Contribution",
                 fps=cfg.movie_fps,
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
