@@ -191,6 +191,7 @@ class PlotConfig:
     movie_3d_mode_contributions: bool = False
     movie_3d_parallel: bool = False
     movie_3d_parallel_procs: Optional[int] = None
+    movie_3d_decomposition: bool = False
 
     # field error plots
     metrics_curves: bool = True
