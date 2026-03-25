@@ -197,6 +197,7 @@ class PlotConfig:
 
     # field error plots
     metrics_curves: bool = True
+    dynabench_comparison_timesteps: int = 50
 
     # Coefficient diagnostics
     coeff_time_series: bool = True
