@@ -245,6 +245,7 @@ def run(
             sindy=sindy,
             rollout=rollout,
             mean_state=mean_state,
+            is_centered=cfg.pod.center,
         )
     
     return RunResult(

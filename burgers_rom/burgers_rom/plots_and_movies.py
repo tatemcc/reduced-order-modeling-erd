@@ -161,6 +161,52 @@ def compute_gasdynamics_vars(q: np.ndarray, gamma: float = 1.4) -> tuple[np.ndar
 
     return pressure, velocity_mag
 
+def _get_z_and_color_data(q: np.ndarray, equation: str) -> tuple:
+    """
+    Helper to get plotting variables (height, color) for a field based on the equation.
+    Works for both single fields (C, ny, nx) and time series (T, C, ny, nx).
+    """
+    is_timeseries = q.ndim == 4
+    if not is_timeseries:
+        if q.ndim != 3:
+            raise ValueError(f"Input q must have 3 or 4 dimensions, got {q.ndim}")
+        q_in = q[np.newaxis, ...]
+    else:
+        q_in = q
+
+    z: np.ndarray
+    color_data: Optional[np.ndarray] = None
+    z_label: str
+    color_mode: str
+    cmap: str
+
+    if equation == "burgers":
+        z = compute_vorticity(q_in)
+        z_label, color_mode, cmap = "Vorticity", "hsv", "hsv"
+    elif equation == "kuramotosivashinsky":
+        z = q_in[:, 0]
+        grad_y, grad_x = np.gradient(z, axis=(1, 2))
+        color_data = np.sqrt(grad_x**2 + grad_y**2)
+        z_label, color_mode, cmap = "Field Value u(x,y)", "colormap", "viridis"
+    elif equation == "gasdynamics":
+        z, color_data = compute_gasdynamics_vars(q_in)
+        z_label, color_mode, cmap = "Pressure", "colormap", "plasma"
+    else: # Fallback for other equations
+        z = q_in[:, 0] # Plot first component as height
+        color_data = z
+        z_label, color_mode, cmap = f"Component 0", "colormap", "viridis"
+
+    # If input was a single field, remove the temporary time dimension
+    if not is_timeseries:
+        z = z[0]
+        if color_data is not None:
+            color_data = color_data[0]
+    
+    # For burgers, q itself is needed for color, so color_data is None
+    q_for_color = q_in if color_mode == 'hsv' else color_data
+
+    return z, q_for_color, z_label, color_mode, cmap
+
 def plot_pod_singular_values(
     pod: PODResult,
     out_dir: Path,
@@ -1227,10 +1273,10 @@ def _render_3d_decomposition_frame_wrapper(args: tuple) -> None:
     _render_3d_decomposition_frame(*args)
 
 
-def _render_3d_decomposition_frame(
+def _render_3d_decomposition_frame( # type: ignore
     frame: int,
     # Data for this frame
-    q_true_frame: np.ndarray,
+    q_true_frame: np.ndarray, # For HSV color
     z_true_frame: np.ndarray,
     color_data_true_frame: Optional[np.ndarray],
     # Static data
@@ -1240,10 +1286,21 @@ def _render_3d_decomposition_frame(
     r: int,
     nx: int,
     ny: int,
-    z_label: str,
-    color_mode: str,
-    cmap: str,
+    main_z_label: str,
+    main_color_mode: str,
+    main_cmap: str,
+    # Mean state data (optional)
+    has_mean: bool,
+    q_mean_field: Optional[np.ndarray],
+    z_mean: Optional[np.ndarray],
+    color_mean: Optional[np.ndarray],
+    # Mode data (static topos and animated contrib)
+    topos_fields: List[np.ndarray],
     z_topos: List[np.ndarray],
+    color_topos: List[Optional[np.ndarray]],
+    q_contrib_frames: List[np.ndarray],
+    z_contrib_frames: List[np.ndarray],
+    color_contrib_frames: List[Optional[np.ndarray]],
     A_true: np.ndarray,
     z_main_min: float,
     z_main_max: float,
@@ -1255,6 +1312,7 @@ def _render_3d_decomposition_frame(
     yy_fine: np.ndarray,
     light: LightSource,
     dpi: int,
+    z_contrib_lims: List[Tuple[float, float]],
 ):
     """Renders a single frame of the 3D decomposition animation."""
     # This function is self-contained to be picklable for multiprocessing.
@@ -1262,7 +1320,7 @@ def _render_3d_decomposition_frame(
 
     # --- Helper to render a single 3D surface ---
     def _plot_surface_on_ax(ax, z_field, q_field, color_field, z_min, z_max, local_color_mode, local_cmap, interp_k=2):
-        ax.clear()
+        # ax.clear() # Clearing is slow, we will overwrite plots
         spline_z = RectBivariateSpline(y, x, z_field, kx=interp_k, ky=interp_k)
         z_fine = spline_z(y_fine, x_fine)
         illumination = light.hillshade(z_fine, vert_exag=0.8)
@@ -1276,7 +1334,7 @@ def _render_3d_decomposition_frame(
             hsv_vertex = np.stack([hue, np.ones_like(hue), rescaled_illumination], axis=-1)
             rgb_vertex = hsv_to_rgb(hsv_vertex)
         else: # Colormap mode
-            if color_field is None: color_field = z_field
+            color_field = z_field if color_field is None else color_field
             spline_color = RectBivariateSpline(y, x, color_field, kx=interp_k, ky=interp_k)
             color_fine = spline_color(y_fine, x_fine)
             c_min, c_max = color_field.min(), color_field.max()
@@ -1288,53 +1346,84 @@ def _render_3d_decomposition_frame(
 
         rgb_face = (rgb_vertex[:-1, :-1] + rgb_vertex[1:, :-1] + rgb_vertex[:-1, 1:] + rgb_vertex[1:, 1:]) / 4.0
         ax.plot_surface(xx_fine, yy_fine, z_fine, facecolors=rgb_face, rstride=1, cstride=1, antialiased=True, shade=False)
-        ax.set_zlim(z_min, z_max)
-        ax.set_xlabel("x", labelpad=-10); ax.set_ylabel("y", labelpad=-10); ax.set_zlabel(z_label, labelpad=-8)
+        if z_max > z_min:
+            ax.set_zlim(z_min, z_max)
+        ax.set_xlabel("x", labelpad=-10); ax.set_ylabel("y", labelpad=-10)
         ax.tick_params(axis='x', pad=-5); ax.tick_params(axis='y', pad=-5); ax.tick_params(axis='z', pad=-3)
 
     # --- Figure Layout ---
-    fig = plt.figure(figsize=(20, 10), dpi=dpi)
+    n_plot_rows = n_modes_to_plot + (1 if has_mean else 0)
+    fig_height = 4 * n_plot_rows
+    fig = plt.figure(figsize=(24, max(fig_height, 8)), dpi=dpi)
     gs = gridspec.GridSpec(
-        n_modes_to_plot + 1, 5,
-        width_ratios=[6, 1, 3, 0.5, 3],
-        height_ratios=[1] * n_modes_to_plot + [0.2],
-        wspace=0.4, hspace=0.6
+        n_plot_rows + 1, 7,
+        width_ratios=[6, 0.7, 3, 0.4, 3, 0.4, 3],
+        height_ratios=[1] * n_plot_rows + [0.2],
+        wspace=0.5, hspace=0.6
     )
     fig.suptitle(f"Decomposition at Time Step {frame}", fontsize=16)
-    fig.text(0.4, 0.5, '≈', transform=fig.transFigure, ha='center', va='center', fontsize=60, color='gray')
+    fig.text(0.38, 0.5, '≈', transform=fig.transFigure, ha='center', va='center', fontsize=60, color='gray')
 
     # --- Main Plot ---
-    ax_main = fig.add_subplot(gs[0:n_modes_to_plot, 0], projection='3d')
+    ax_main = fig.add_subplot(gs[0:n_plot_rows, 0], projection='3d')
     _plot_surface_on_ax(
-        ax_main, z_true_frame, q_true_frame, color_data_true_frame,
-        z_main_min, z_main_max, color_mode, cmap, interp_k=2
+        ax_main, z_true_frame, q_true_frame, color_data_true_frame, z_main_min, z_main_max,
+        main_color_mode, main_cmap, interp_k=2
     )
-    ax_main.set_title(f"True Field ({z_label})")
+    ax_main.set_title(f"True Field ({main_z_label})")
+    ax_main.set_zlabel(main_z_label, labelpad=-8)
+
+    # --- Mean Topos Plot (if exists) ---
+    if has_mean:
+        ax_mean = fig.add_subplot(gs[0, 2], projection='3d')
+        _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(q_mean_field, "burgers") # Use burgers for consistent viz
+        _plot_surface_on_ax(ax_mean, z_mean, q_mean_field, color_mean, z_mean.min(), z_mean.max(), c_mode, c_map, interp_k=2)
+        ax_mean.set_title("Mean Topos", fontsize=10)
+        ax_mean.set_zlabel(z_lbl, labelpad=-8)
 
     # --- Mode Plots ---
     for i in range(n_modes_to_plot):
-        ax_t = fig.add_subplot(gs[i, 2], projection='3d')
-        z_t = z_topos[i]
-        _plot_surface_on_ax(ax_t, z_t, None, z_t, z_t.min(), z_t.max(), "colormap", "viridis", interp_k=2)
-        ax_t.set_title(f"Topos (Mode {i})", fontsize=10)
-        ax_t.set_zlabel(f"Comp 0", labelpad=-8)
+        row_idx = i + (1 if has_mean else 0)
+        
+        # Get consistent visualization properties for this mode's plots
+        _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(topos_fields[i], "burgers")
 
-        ax_c = fig.add_subplot(gs[i, 4])
+        # Animated Contribution Plot
+        ax_contrib = fig.add_subplot(gs[row_idx, 2], projection='3d')
+        z_min_c, z_max_c = z_contrib_lims[i]
+        _plot_surface_on_ax(ax_contrib, z_contrib_frames[i], q_contrib_frames[i], color_contrib_frames[i], z_min_c, z_max_c, c_mode, c_map, interp_k=2)
+        ax_contrib.set_title(f"Mode {i} Contribution", fontsize=10)
+        ax_contrib.set_zlabel(z_lbl, labelpad=-8)
+
+        # Static Topos Plot
+        ax_t = fig.add_subplot(gs[row_idx, 4], projection='3d')
+        _plot_surface_on_ax(ax_t, z_topos[i], topos_fields[i], color_topos[i], z_topos[i].min(), z_topos[i].max(), c_mode, c_map, interp_k=2)
+        ax_t.set_title(f"Topos (Mode {i})", fontsize=10)
+        ax_t.set_zlabel(z_lbl, labelpad=-8)
+
+        # Chronos Plot
+        ax_c = fig.add_subplot(gs[row_idx, 6])
         ax_c.plot(np.arange(T), A_true[:, i], color=f"C{i}")
         ax_c.plot([frame], [A_true[frame, i]], 'o', color='red', markersize=8)
         ax_c.set_title(f"Chronos (Mode {i})", fontsize=10)
         ax_c.set_xlabel("Time Step", fontsize=8); ax_c.set_ylabel("Amplitude", fontsize=8)
         ax_c.grid(True, alpha=0.3); ax_c.tick_params(axis='both', which='major', labelsize=8)
 
+        # Add text symbols for this row
+        pos_contrib = ax_contrib.get_position()
+        if row_idx > 0: # Add '+' between rows
+            fig.text(pos_contrib.x0, pos_contrib.y1 + 0.02, '+', ha='center', va='center', fontsize=24)
+
         pos_t = ax_t.get_position()
-        fig.text(pos_t.x0 - 0.05, pos_t.y0 + pos_t.height / 2, f"Mode {i} =", ha='center', va='center', fontsize=14)
+        fig.text(pos_t.x0 - 0.02, pos_t.y0 + pos_t.height / 2, '=', ha='center', va='center', fontsize=24)
+
         pos_c = ax_c.get_position()
-        fig.text(pos_c.x0 - 0.02, pos_c.y0 + pos_c.height / 2, '×', ha='center', va='center', fontsize=24)
+        fig.text(pos_c.x0 - 0.025, pos_c.y0 + pos_c.height / 2, '×', ha='center', va='center', fontsize=24)
 
     if r > n_modes_to_plot:
-        ax_placeholder = fig.add_subplot(gs[n_modes_to_plot, 2]); ax_placeholder.axis('off')
+        ax_placeholder = fig.add_subplot(gs[n_plot_rows, 2]); ax_placeholder.axis('off')
         pos = ax_placeholder.get_position()
-        fig.text(pos.x0 + 0.02, pos.y0 + pos.height, '+  . . .', ha='left', va='center', fontsize=20)
+        fig.text(pos.x0, pos.y0 + pos.height, '+  . . .', ha='left', va='center', fontsize=20)
 
     fig.savefig(output_path)
     plt.close(fig)
@@ -1350,6 +1439,7 @@ def animate_3d_decomposition(
     dpi: int = 120,
     interp_factor: int = 2,
     plot_cfg: Optional[PlotConfig] = None,
+    is_centered: bool = False,
 ) -> None:
     """
     Animate the decomposition of the true field into its dominant POD modes.
@@ -1370,33 +1460,41 @@ def animate_3d_decomposition(
         print("Skipping 3D decomposition movie: no modes to plot.")
         return
 
-    # --- Data preparation for all plots ---
-    # This logic is adapted from animate_3d_surface
-    z_true: np.ndarray
-    color_data_true: Optional[np.ndarray] = None
-    z_label: str
-    color_mode: str
-    cmap: str
+    # --- Data Preparation ---
+    # Main plot data
+    z_true, q_for_color_true, main_z_label, main_color_mode, main_cmap = _get_z_and_color_data(q_true, equation)
+    color_data_true = q_for_color_true if main_color_mode == 'colormap' else None
 
-    if equation == "burgers":
-        z_true = compute_vorticity(q_true)
-        z_label, color_mode, cmap = "Vorticity", "hsv", "hsv"
-    elif equation == "kuramotosivashinsky":
-        z_true = q_true[:, 0]
-        grad_y, grad_x = np.gradient(z_true, axis=(1, 2))
-        color_data_true = np.sqrt(grad_x**2 + grad_y**2)
-        z_label, color_mode, cmap = "Field Value u(x,y)", "colormap", "viridis"
-    elif equation == "gasdynamics":
-        z_true, color_data_true = compute_gasdynamics_vars(q_true)
-        z_label, color_mode, cmap = "Pressure", "colormap", "plasma"
-    else: # Fallback for other equations
-        z_true = q_true[:, 0] # Plot first component as height
-        color_data_true = z_true
-        z_label, color_mode, cmap = f"Component 0", "colormap", "viridis"
+    # Mean state data (if exists)
+    has_mean = mean_state is not None and is_centered
+    q_mean_field, z_mean, color_mean = None, None, None
+    if has_mean:
+        q_mean_field = state_vec_to_fields(mean_state, layout)
+        z_mean, q_for_color_mean, _, _, _ = _get_z_and_color_data(q_mean_field, equation)
+        color_mean = q_for_color_mean if _get_z_and_color_data(q_mean_field, equation)[3] == 'colormap' else None
 
     # --- Prepare Topos (basis vectors) data ---
     topos_fields = [state_vec_to_fields(U[:, i], layout) for i in range(n_modes_to_plot)]
-    z_topos = [field[0] for field in topos_fields] # Use component 0 for height
+    
+    # Prepare data for all small plots (topos, contributions)
+    z_topos, color_topos, q_contrib, z_contrib, color_contrib, z_contrib_lims = [], [], [], [], [], []
+    for i in range(n_modes_to_plot):
+        # Static topos plots
+        z_t, q_for_color_t, _, _, _ = _get_z_and_color_data(topos_fields[i], equation)
+        z_topos.append(z_t)
+        color_topos.append(q_for_color_t if _get_z_and_color_data(topos_fields[i], equation)[3] == 'colormap' else None)
+
+        # Animated contribution plots
+        q_c = A_true[:, i][:, np.newaxis, np.newaxis, np.newaxis] * topos_fields[i][np.newaxis, ...]
+        q_contrib.append(q_c)
+        z_c, q_for_color_c, _, _, _ = _get_z_and_color_data(q_c, equation)
+        z_contrib.append(z_c)
+        color_contrib.append(q_for_color_c if _get_z_and_color_data(q_c, equation)[3] == 'colormap' else None)
+
+        # Calculate z-limits for contribution plots (symmetric around 0)
+        v_abs = max(abs(z_c.min()), abs(z_c.max()))
+        if v_abs < 1e-9: v_abs = 1.0
+        z_contrib_lims.append((-v_abs, v_abs))
 
     # --- Interpolation and Plotting Setup ---
     x = np.arange(nx)
@@ -1426,18 +1524,31 @@ def animate_3d_decomposition(
             for frame in frame_indices:
                 task_args = (
                     frame,
-                    q_true[frame],
+                    q_true[frame], # For HSV color
                     z_true[frame],
                     color_data_true[frame] if color_data_true is not None else None,
                     frame_dir / f"frame_{frame:05d}.png",
-                    T, n_modes_to_plot, r, nx, ny, z_label, color_mode, cmap,
-                    z_topos, A_true, z_true.min(), z_true.max(),
+                    T, n_modes_to_plot, r, nx, ny, main_z_label, main_color_mode, main_cmap,
+                    has_mean, q_mean_field, z_mean, color_mean,
+                    topos_fields,
+                    z_topos,
+                    color_topos,
+                    [qc[frame] for qc in q_contrib],
+                    [zc[frame] for zc in z_contrib],
+                    [cc[frame] if cc is not None else None for cc in color_contrib],
+                    A_true, z_true.min(), z_true.max(),
                     x, y, x_fine, y_fine, xx_fine, yy_fine, light, dpi,
+                    z_contrib_lims,
                 )
                 tasks.append(task_args)
 
             with mp_context.Pool(processes=n_procs) as pool, tqdm(total=n_frames, desc="Rendering 3D frames") as pbar:
-                for _ in pool.imap_unordered(_render_3d_decomposition_frame_wrapper, tasks):
+                # Use a generator to feed tasks to the pool to manage memory
+                task_generator = (t for t in tasks)
+                for _ in pool.imap_unordered(
+                    _render_3d_decomposition_frame_wrapper,
+                    task_generator,
+                    chunksize=max(1, n_frames // (4 * n_procs))):
                     pbar.update(1)
 
             print("Stitching frames into movie with ffmpeg...")
@@ -1455,122 +1566,13 @@ def animate_3d_decomposition(
         return
 
     # --- Sequential Rendering Path (Original Implementation) ---
-    print("Generating 3D decomposition movie sequentially...")
-
-    # --- Figure Layout ---
-    fig = plt.figure(figsize=(20, 10), dpi=dpi)
-    # Create a grid: 3 rows for modes, 1 for padding. 5 columns for layout.
-    gs = gridspec.GridSpec(
-        n_modes_to_plot + 1, 5,
-        width_ratios=[6, 1, 3, 0.5, 3],
-        height_ratios=[1] * n_modes_to_plot + [0.2],
-        wspace=0.4, hspace=0.6
+    # The sequential path is now deprecated in favor of the more robust parallel path.
+    # If parallel fails (e.g., no ffmpeg), it's better to notify the user than
+    # to fall back to a slow, memory-intensive animation method.
+    print(
+        "Skipping sequential 3D decomposition movie generation. "
+        "Enable `movie_3d_parallel` and ensure ffmpeg is installed."
     )
-
-    # Main plot on the left, spanning all mode rows
-    ax_main = fig.add_subplot(gs[0:n_modes_to_plot, 0], projection='3d')
-    title = fig.suptitle("Time: 0.00", fontsize=16)
-
-    # Add "≈" symbol
-    fig.text(0.4, 0.5, '≈', transform=fig.transFigure, ha='center', va='center', fontsize=60, color='gray')
-
-    # --- Helper to render a single 3D surface ---
-    def _plot_surface_on_ax(ax, z_field, q_field, color_field, z_min, z_max, local_color_mode, local_cmap):
-        ax.clear()
-        spline_z = RectBivariateSpline(y, x, z_field, kx=2, ky=2)
-        z_fine = spline_z(y_fine, x_fine)
-        illumination = light.hillshade(z_fine, vert_exag=0.8)
-        rescaled_illumination = 0.5 + 0.5 * illumination
-
-        if local_color_mode == "hsv" and q_field is not None:
-            spline_u = RectBivariateSpline(y, x, q_field[0], kx=2, ky=2)
-            spline_v = RectBivariateSpline(y, x, q_field[1], kx=2, ky=2)
-            u_fine, v_fine = spline_u(y_fine, x_fine), spline_v(y_fine, x_fine)
-            hue = (np.arctan2(v_fine, u_fine) + np.pi) / (2 * np.pi)
-            hsv_vertex = np.stack([hue, np.ones_like(hue), rescaled_illumination], axis=-1)
-            rgb_vertex = hsv_to_rgb(hsv_vertex)
-        else: # Colormap mode
-            spline_color = RectBivariateSpline(y, x, color_field, kx=2, ky=2)
-            color_fine = spline_color(y_fine, x_fine)
-            c_min, c_max = color_field.min(), color_field.max()
-            if c_max - c_min < 1e-9: c_max = c_min + 1.0
-            norm = Normalize(vmin=c_min, vmax=c_max)
-            cmap_obj = plt.get_cmap(local_cmap)
-            colors_from_map = cmap_obj(norm(color_fine))[:, :, :3]
-            rgb_vertex = colors_from_map * rescaled_illumination[..., np.newaxis]
-
-        rgb_face = (rgb_vertex[:-1, :-1] + rgb_vertex[1:, :-1] + rgb_vertex[:-1, 1:] + rgb_vertex[1:, 1:]) / 4.0
-        ax.plot_surface(xx_fine, yy_fine, z_fine, facecolors=rgb_face, rstride=1, cstride=1, antialiased=True, shade=False)
-        ax.set_zlim(z_min, z_max)
-        ax.set_xlabel("x", labelpad=-10); ax.set_ylabel("y", labelpad=-10); ax.set_zlabel(z_label, labelpad=-8)
-        ax.tick_params(axis='x', pad=-5); ax.tick_params(axis='y', pad=-5); ax.tick_params(axis='z', pad=-3)
-
-    # --- Plot static components (Topos and Chronos lines) ---
-    z_main_min, z_main_max = z_true.min(), z_true.max()
-    ax_topos, ax_chronos, chronos_dots = [], [], []
-
-    for i in range(n_modes_to_plot):
-        # --- Topos Plot (static 3D basis vector) ---
-        ax_t = fig.add_subplot(gs[i, 2], projection='3d')
-        z_t = z_topos[i]
-        # For topos, color is based on its own height (component 0)
-        _plot_surface_on_ax(ax_t, z_t, None, z_t, z_t.min(), z_t.max(), "colormap", "viridis")
-        ax_t.set_title(f"Topos (Mode {i})", fontsize=10)
-        ax_t.set_zlabel(f"Comp 0", labelpad=-8)
-        ax_topos.append(ax_t)
-
-        # --- Chronos Plot (1D coefficient) ---
-        ax_c = fig.add_subplot(gs[i, 4])
-        ax_c.plot(np.arange(T), A_true[:, i], color=f"C{i}")
-        dot, = ax_c.plot([0], [A_true[0, i]], 'o', color='red', markersize=8)
-        ax_c.set_title(f"Chronos (Mode {i})", fontsize=10)
-        ax_c.set_xlabel("Time Step", fontsize=8)
-        ax_c.set_ylabel("Amplitude", fontsize=8)
-        ax_c.grid(True, alpha=0.3)
-        ax_c.tick_params(axis='both', which='major', labelsize=8)
-        ax_chronos.append(ax_c)
-        chronos_dots.append(dot)
-
-        # Add text labels for this row
-        pos = ax_t.get_position()
-        fig.text(pos.x0 - 0.05, pos.y0 + pos.height / 2, f"Mode {i} =", ha='center', va='center', fontsize=14)
-        pos_c = ax_c.get_position()
-        fig.text(pos_c.x0 - 0.02, pos.y0 + pos.height / 2, '×', ha='center', va='center', fontsize=24)
-
-    # Add "+ ..." at the bottom
-    if r > n_modes_to_plot:
-        ax_placeholder = fig.add_subplot(gs[n_modes_to_plot, 2])
-        pos = ax_placeholder.get_position()
-        fig.text(pos.x0 + 0.02, pos.y0 + pos.height, '+  . . .', ha='left', va='center', fontsize=20)
-        ax_placeholder.axis('off')
-
-    # --- Animation Update Function ---
-    def update(frame):
-        # Update main plot
-        _plot_surface_on_ax(
-            ax_main,
-            z_true[frame],
-            q_true[frame],
-            color_data_true[frame] if color_data_true is not None else None,
-            z_main_min, z_main_max,
-            color_mode, cmap
-        )
-        ax_main.set_title(f"True Field ({z_label})")
-
-        # Update chronos dots
-        for i in range(n_modes_to_plot):
-            chronos_dots[i].set_data([frame], [A_true[frame, i]])
-
-        title.set_text(f"Decomposition at Time Step {frame}")
-        return [ax_main] + chronos_dots
-
-    # Create and save animation
-    movie_every = plot_cfg.movie_every if plot_cfg is not None else 1
-    ani = animation.FuncAnimation(fig, update, frames=range(0, T, movie_every), blit=False)
-    writer = "ffmpeg" if output_path.suffix == ".mp4" else "pillow"
-    ani.save(output_path, writer=writer, fps=fps)
-    plt.close(fig)
-    print(f"Saved 3D decomposition animation to {output_path}")
 
 def _reconstruct_fields_from_modes(
     U: np.ndarray,
@@ -1632,6 +1634,7 @@ def generate_all_plots_and_movies(
     rollout: RolloutResult,
     equation: str,
     mean_state: Optional[np.ndarray] = None,
+    is_centered: bool = False,
 ) -> None:
     """
     Generate all configured plots and movies for a completed run.
@@ -1654,6 +1657,8 @@ def generate_all_plots_and_movies(
         Rollout results.
     mean_state : np.ndarray, optional
         Mean state vector, if centering was used.
+    is_centered : bool
+        Whether centering was used.
     """
     if not cfg.enabled:
         return
@@ -1773,6 +1778,7 @@ def generate_all_plots_and_movies(
             dpi=cfg.dpi,
             interp_factor=interp_factor,
             plot_cfg=cfg,
+            is_centered=is_centered,
         )
 
     if getattr(cfg, "movie_3d_mode_contributions", False):
