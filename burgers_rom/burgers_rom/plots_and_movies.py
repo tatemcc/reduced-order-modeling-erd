@@ -1464,7 +1464,7 @@ def _render_3d_decomposition_frame( # type: ignore
         ax_placeholder = fig.add_subplot(gs[n_plot_rows, contrib_col]); ax_placeholder.axis('off')
         pos = ax_placeholder.get_position()
         # Center the '...' horizontally
-        fig.text(pos.x0 + pos.width / 2, pos.y0 + pos.height, '+  . . .', ha='center', va='center', fontsize=20)
+        fig.text(pos.x0 + pos.width / 2, pos.y0 + pos.height, '+  more modes', ha='center', va='center', fontsize=20)
 
     fig.savefig(output_path)
     plt.close(fig)
