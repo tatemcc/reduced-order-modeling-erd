@@ -24,6 +24,7 @@ import imageio.v2 as imageio
 import matplotlib.gridspec as gridspec
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.interpolate import RectBivariateSpline
+import warnings
 from matplotlib.colors import LightSource, hsv_to_rgb, Normalize
 import multiprocessing
 import subprocess
@@ -1621,6 +1622,196 @@ def animate_3d_decomposition(
         "Enable `movie_3d_parallel` and ensure ffmpeg is installed."
     )
 
+def _render_3d_reconstruction_frame_wrapper(args: tuple) -> None:
+    """Helper to unpack arguments for multiprocessing.Pool.map."""
+    return _render_3d_reconstruction_frame(*args)
+
+
+def _render_3d_reconstruction_frame(
+    frame: int,
+    # Data for this frame
+    q_true_frame: np.ndarray, z_true_frame: np.ndarray, color_data_true_frame: Optional[np.ndarray],
+    q_recon_frame: np.ndarray, z_recon_frame: np.ndarray, color_data_recon_frame: Optional[np.ndarray],
+    q_error_frame: np.ndarray, z_error_frame: np.ndarray, color_data_error_frame: Optional[np.ndarray],
+    # Static data
+    output_path: Path,
+    n_val: int,
+    x: np.ndarray, y: np.ndarray, x_fine: np.ndarray, y_fine: np.ndarray, xx_fine: np.ndarray, yy_fine: np.ndarray,
+    light: LightSource, dpi: int,
+    z_main_min: float, z_main_max: float,
+    z_err_min: float, z_err_max: float,
+    plot_props_true: tuple,
+    plot_props_recon: tuple,
+    plot_props_error: tuple,
+):
+    """Renders a single 3-panel frame of the 3D reconstruction comparison animation."""
+
+    # --- Helper to render a single 3D surface (adapted from _render_3d_decomposition_frame) ---
+    def _plot_surface_on_ax(ax, z_field, q_field, color_field, z_min, z_max, local_color_mode, local_cmap, interp_k=2):
+        spline_z = RectBivariateSpline(y, x, z_field, kx=interp_k, ky=interp_k)
+        z_fine = spline_z(y_fine, x_fine)
+        illumination = light.hillshade(z_fine, vert_exag=0.8)
+        rescaled_illumination = 0.5 + 0.5 * illumination
+
+        if local_color_mode == "hsv" and q_field is not None:
+            spline_u = RectBivariateSpline(y, x, q_field[0], kx=interp_k, ky=interp_k)
+            spline_v = RectBivariateSpline(y, x, q_field[1], kx=interp_k, ky=interp_k)
+            u_fine, v_fine = spline_u(y_fine, x_fine), spline_v(y_fine, x_fine)
+            hue = (np.arctan2(v_fine, u_fine) + np.pi) / (2 * np.pi)
+            hsv_vertex = np.stack([hue, np.ones_like(hue), rescaled_illumination], axis=-1)
+            rgb_vertex = hsv_to_rgb(hsv_vertex)
+        else: # Colormap mode
+            color_field_to_interp = z_field if color_field is None else color_field
+            spline_color = RectBivariateSpline(y, x, color_field_to_interp, kx=interp_k, ky=interp_k)
+            color_fine = spline_color(y_fine, x_fine)
+            c_min, c_max = color_field_to_interp.min(), color_field_to_interp.max()
+            if c_max - c_min < 1e-9: c_max = c_min + 1.0
+            norm = Normalize(vmin=c_min, vmax=c_max)
+            cmap_obj = plt.get_cmap(local_cmap)
+            colors_from_map = cmap_obj(norm(color_fine))[:, :, :3]
+            rgb_vertex = colors_from_map * rescaled_illumination[..., np.newaxis]
+
+        rgb_face = (rgb_vertex[:-1, :-1] + rgb_vertex[1:, :-1] + rgb_vertex[:-1, 1:] + rgb_vertex[1:, 1:]) / 4.0
+        ax.plot_surface(xx_fine, yy_fine, z_fine, facecolors=rgb_face, rstride=1, cstride=1, antialiased=True, shade=False)
+        if z_max > z_min:
+            ax.set_zlim(z_min, z_max)
+        ax.set_xlabel("x", labelpad=-10); ax.set_ylabel("y", labelpad=-10)
+        ax.tick_params(axis='x', pad=-5); ax.tick_params(axis='y', pad=-5); ax.tick_params(axis='z', pad=-3)
+
+    # --- Figure Layout ---
+    fig = plt.figure(figsize=(21, 7), dpi=dpi)
+    gs = gridspec.GridSpec(1, 3, wspace=0.1, hspace=0.1)
+    fig.suptitle(f"Time Step {frame}", fontsize=16)
+
+    z_lbl_true, c_mode_true, c_map_true = plot_props_true
+    z_lbl_recon, c_mode_recon, c_map_recon = plot_props_recon
+    z_lbl_error, c_mode_error, c_map_error = plot_props_error
+
+    # --- Left Plot: True Field ---
+    ax_true = fig.add_subplot(gs[0, 0], projection='3d')
+    _plot_surface_on_ax(ax_true, z_true_frame, q_true_frame, color_data_true_frame, z_main_min, z_main_max, c_mode_true, c_map_true)
+    ax_true.set_title("Full True")
+    ax_true.set_zlabel(z_lbl_true, labelpad=-8)
+
+    # --- Middle Plot: Reconstruction ---
+    ax_recon = fig.add_subplot(gs[0, 1], projection='3d')
+    _plot_surface_on_ax(ax_recon, z_recon_frame, q_recon_frame, color_data_recon_frame, z_main_min, z_main_max, c_mode_recon, c_map_recon)
+    ax_recon.set_title(f"Mean + Top {n_val} Predicted")
+    ax_recon.set_zlabel(z_lbl_recon, labelpad=-8)
+
+    # --- Right Plot: Error ---
+    ax_error = fig.add_subplot(gs[0, 2], projection='3d')
+    _plot_surface_on_ax(ax_error, z_error_frame, q_error_frame, color_data_error_frame, z_err_min, z_err_max, c_mode_error, c_map_error)
+    ax_error.set_title("Error")
+    ax_error.set_zlabel(z_lbl_error, labelpad=-8)
+
+    # tight_layout is known to issue a UserWarning with 3D axes, which is safe to
+    # ignore if the visual output is acceptable. We suppress it to keep logs clean.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(output_path)
+    plt.close(fig)
+
+
+def animate_3d_reconstruction_comparison(
+    rollout: RolloutResult,
+    pod: PODResult,
+    layout: SnapshotLayout,
+    equation: str,
+    output_dir: Path,
+    mean_state: Optional[np.ndarray],
+    fps: int = 15,
+    dpi: int = 120,
+    interp_factor: int = 2,
+    plot_cfg: Optional[PlotConfig] = None,
+    is_centered: bool = False,
+) -> None:
+    """
+    Animate a 3-panel comparison: True vs. Reconstruction vs. Error.
+
+    Generates a series of movies, one for each number of modes `n` used in
+    the reconstruction (from n=0 to n=r).
+    """
+    use_parallel = plot_cfg and getattr(plot_cfg, "movie_3d_parallel", False)
+    if not use_parallel:
+        print("Skipping 3D reconstruction comparison: `movie_3d_parallel` is false.")
+        return
+
+    T, r = rollout.A_true.shape
+    nx, ny = layout.nx, layout.ny
+
+    q_true = rollout.fields_true
+    x, y = np.arange(nx), np.arange(ny)
+    x_fine, y_fine = np.linspace(0, nx - 1, nx * interp_factor), np.linspace(0, ny - 1, ny * interp_factor)
+    xx_fine, yy_fine = np.meshgrid(x_fine, y_fine)
+    light = LightSource(azdeg=225, altdeg=45)
+
+    n_procs = plot_cfg.movie_3d_parallel_procs or multiprocessing.cpu_count() // 2 or 1
+    mp_context = multiprocessing.get_context("spawn")
+
+    # --- Prepare data that is constant across all movies in the series ---
+    z_true, q_color_true, z_lbl_true, c_mode_true, c_map_true = _get_z_and_color_data(q_true, equation)
+    color_true = q_color_true if c_mode_true == 'colormap' else None
+
+    # --- Loop over number of modes `n` to generate one movie per `n` ---
+    for n in range(r + 1):
+        print(f"Generating 3D reconstruction comparison movie for n={n}/{r} modes...")
+        output_path = output_dir / f"reconstruction_comparison_n{n:02d}.mp4"
+
+        mode_indices = list(range(n))
+        q_recon = _reconstruct_fields_from_modes(pod.U, rollout.A_pred, layout, mode_indices, mean_state, add_mean=is_centered)
+
+        # The error is the difference between the partial reconstruction and the true field
+        q_error = q_recon - q_true
+
+        # Get plotting data for all three fields for this n
+        z_recon, q_color_recon, z_lbl_recon, c_mode_recon, c_map_recon = _get_z_and_color_data(q_recon, equation)
+        color_recon = q_color_recon if c_mode_recon == 'colormap' else None
+
+        z_error, q_color_error, z_lbl_error, c_mode_error, c_map_error = _get_z_and_color_data(q_error, equation)
+        color_error = q_color_error if c_mode_error == 'colormap' else None
+
+        # Calculate z-limits for the error plot for this n
+        z_abs_error = max(abs(z_error.min()), abs(z_error.max()))
+        if z_abs_error < 1e-9: z_abs_error = 1.0
+        z_min_err, z_max_err = -z_abs_error, z_abs_error
+
+        z_min_main, z_max_main = min(z_true.min(), z_recon.min()), max(z_true.max(), z_recon.max())
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            frame_dir = Path(temp_dir)
+            tasks = []
+            for frame in range(T):
+                tasks.append((
+                    frame,
+                    q_true[frame], z_true[frame], color_true[frame] if color_true is not None else None,
+                    q_recon[frame], z_recon[frame], color_recon[frame] if color_recon is not None else None,
+                    q_error[frame], z_error[frame], color_error[frame] if color_error is not None else None,
+                    frame_dir / f"frame_{frame:05d}.png", n,
+                    x, y, x_fine, y_fine, xx_fine, yy_fine, light, dpi,
+                    z_min_main, z_max_main, z_min_err, z_max_err,
+                    (z_lbl_true, c_mode_true, c_map_true),
+                    (z_lbl_recon, c_mode_recon, c_map_recon),
+                    (z_lbl_error, c_mode_error, c_map_error),
+                ))
+
+            with mp_context.Pool(processes=n_procs) as pool, tqdm(total=T, desc=f"Rendering frames (n={n})") as pbar:
+                for _ in pool.imap_unordered(_render_3d_reconstruction_frame_wrapper, tasks, chunksize=max(1, T // (4 * n_procs))):
+                    pbar.update(1)
+
+            print(f"Stitching frames for n={n} movie...")
+            ffmpeg_cmd = [
+                "ffmpeg", "-y", "-framerate", str(fps), "-i", str(frame_dir / "frame_%05d.png"),
+                "-c:v", "libx264", "-profile:v", "main", "-vf", "scale=min(1920\\,iw):-2",
+                "-pix_fmt", "yuv420p", "-crf", "17", "-preset", "fast", str(output_path),
+            ]
+            try:
+                subprocess.run(ffmpeg_cmd, check=True, capture_output=True, text=True, encoding="utf-8")
+                print(f"Saved 3D reconstruction comparison animation to {output_path}")
+            except (FileNotFoundError, subprocess.CalledProcessError) as e:
+                print(f"ERROR: ffmpeg failed for n={n}. Is it installed? Details:\n{e}")
+
 def _reconstruct_fields_from_modes(
     U: np.ndarray,
     A: np.ndarray,
@@ -1820,6 +2011,25 @@ def generate_all_plots_and_movies(
             layout=layout,
             equation=equation,
             output_path=mov_dir / "rollout_3d_decomposition.mp4",
+            mean_state=mean_state,
+            fps=cfg.movie_fps,
+            dpi=cfg.dpi,
+            interp_factor=interp_factor,
+            plot_cfg=cfg,
+            is_centered=is_centered,
+        )
+
+    if getattr(cfg, "movie_3d_reconstruction_comparison", False):
+        print("Generating 3D reconstruction comparison movies...")
+        recon_dir = mov_dir / "3d_reconstruction_comparison"
+        recon_dir.mkdir(exist_ok=True)
+        interp_factor = getattr(cfg, "movie_3d_interp_factor", 2)
+        animate_3d_reconstruction_comparison(
+            rollout=rollout,
+            pod=pod,
+            layout=layout,
+            equation=equation,
+            output_dir=recon_dir,
             mean_state=mean_state,
             fps=cfg.movie_fps,
             dpi=cfg.dpi,
