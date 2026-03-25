@@ -1407,7 +1407,7 @@ def _render_3d_decomposition_frame( # type: ignore
     if has_mean:
         ax_mean = fig.add_subplot(gs[0:n_plot_rows, mean_col], projection='3d')
         _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(q_mean_field, equation)
-        _plot_surface_on_ax(ax_mean, z_mean, q_mean_field, color_mean, z_mean.min(), z_mean.max(), c_mode, c_map, interp_k=2)
+        _plot_surface_on_ax(ax_mean, z_mean, q_mean_field, color_mean, z_main_min, z_main_max, c_mode, c_map, interp_k=2)
         if show_titles:
             ax_mean.set_title("Mean Topos", fontsize=10)
         ax_mean.set_zlabel(z_lbl, labelpad=-8)
@@ -1507,6 +1507,10 @@ def animate_3d_decomposition(
     z_true, q_for_color_true, main_z_label, main_color_mode, main_cmap = _get_z_and_color_data(q_true, equation)
     color_data_true = q_for_color_true if main_color_mode == 'colormap' else None
 
+    # Determine global z-limits for main, mean, and contribution plots
+    all_z_mins = [z_true.min()]
+    all_z_maxs = [z_true.max()]
+
     # Mean state data (if exists)
     has_mean = mean_state is not None and is_centered
     q_mean_field, z_mean, color_mean = None, None, None
@@ -1514,12 +1518,14 @@ def animate_3d_decomposition(
         q_mean_field = state_vec_to_fields(mean_state, layout)
         z_mean, q_for_color_mean, _, _, _ = _get_z_and_color_data(q_mean_field, equation)
         color_mean = q_for_color_mean if _get_z_and_color_data(q_mean_field, equation)[3] == 'colormap' else None
+        all_z_mins.append(z_mean.min())
+        all_z_maxs.append(z_mean.max())
 
     # --- Prepare Topos (basis vectors) data ---
     topos_fields = [state_vec_to_fields(U[:, i], layout) for i in range(n_modes_to_plot)]
     
     # Prepare data for all small plots (topos, contributions)
-    z_topos, color_topos, q_contrib, z_contrib, color_contrib, z_contrib_lims = [], [], [], [], [], []
+    z_topos, color_topos, q_contrib, z_contrib, color_contrib = [], [], [], [], []
     for i in range(n_modes_to_plot):
         # Static topos plots
         z_t, q_for_color_t, _, _, _ = _get_z_and_color_data(topos_fields[i], equation)
@@ -1532,11 +1538,16 @@ def animate_3d_decomposition(
         z_c, q_for_color_c, _, _, _ = _get_z_and_color_data(q_c, equation)
         z_contrib.append(z_c)
         color_contrib.append(q_for_color_c if _get_z_and_color_data(q_c, equation)[3] == 'colormap' else None)
+        all_z_mins.append(z_c.min())
+        all_z_maxs.append(z_c.max())
 
-        # Calculate z-limits for contribution plots (symmetric around 0)
-        v_abs = max(abs(z_c.min()), abs(z_c.max()))
-        if v_abs < 1e-9: v_abs = 1.0
-        z_contrib_lims.append((-v_abs, v_abs))
+    # Calculate global limits and set them for all relevant plots
+    z_global_min = min(all_z_mins)
+    z_global_max = max(all_z_maxs)
+
+    # The contribution plots will use these global limits.
+    # The topos plots will keep their own auto-scaled limits.
+    z_contrib_lims = [(z_global_min, z_global_max)] * n_modes_to_plot
 
     # --- Interpolation and Plotting Setup ---
     x = np.arange(nx)
@@ -1581,7 +1592,7 @@ def animate_3d_decomposition(
                     [qc[frame] for qc in q_contrib],
                     [zc[frame] for zc in z_contrib],
                     [cc[frame] if cc is not None else None for cc in color_contrib],
-                    A_true, z_true.min(), z_true.max(),
+                    A_true, z_global_min, z_global_max,
                     x, y, x_fine, y_fine, xx_fine, yy_fine, light, dpi,
                     z_contrib_lims,
                     show_titles,
