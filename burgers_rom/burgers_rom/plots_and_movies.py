@@ -182,8 +182,12 @@ def _get_z_and_color_data(q: np.ndarray, equation: str) -> tuple:
     cmap: str
 
     if equation == "burgers":
-        z = compute_vorticity(q_in)
-        z_label, color_mode, cmap = "Vorticity", "hsv", "hsv"
+        z = compute_vorticity(q_in)  # Height is vorticity
+        # Color is velocity direction (angle)
+        u = q_in[:, 0]
+        v = q_in[:, 1]
+        color_data = np.arctan2(v, u)
+        z_label, color_mode, cmap = "Vorticity", "colormap", "plasma"
     elif equation == "kuramotosivashinsky":
         z = q_in[:, 0]
         grad_y, grad_x = np.gradient(z, axis=(1, 2))
@@ -971,17 +975,18 @@ def animate_3d_surface(
         if C != 2:
             print(f"Skipping 3D surface plot for 'burgers': requires 2 components, found {C}.")
             return
-        
+
         # Height data: vorticity
         z_left = compute_vorticity(q_left)
         z_right = compute_vorticity(q_right) if is_dual_plot else None
 
-        # Color data (velocity angle) is handled inside the update loop
-        # by interpolating u and v components.
+        # Color data: velocity angle
+        color_data_true = np.arctan2(q_left[:, 1], q_left[:, 0])
+        if is_dual_plot:
+            color_data_right = np.arctan2(q_right[:, 1], q_right[:, 0])
         z_label = "Vorticity"
-        color_mode = "hsv"
-        cmap = "hsv"  # For burgers, this is handled by hsv_to_rgb
-
+        color_mode = "colormap"
+        cmap = "plasma"
     elif equation == "kuramotosivashinsky":
         if C != 1:
             print(f"Skipping 3D surface plot for 'kuramotosivashinsky': requires 1 component, found {C}.")
@@ -1647,10 +1652,8 @@ def _render_3d_reconstruction_frame(
     # Static data
     output_path: Path,
     n_val: int,
-    x: np.ndarray, y: np.ndarray, x_fine: np.ndarray, y_fine: np.ndarray, xx_fine: np.ndarray, yy_fine: np.ndarray,
-    light: LightSource, dpi: int,
-    z_main_min: float, z_main_max: float,
-    z_err_min: float, z_err_max: float,
+    x: np.ndarray, y: np.ndarray, x_fine: np.ndarray, y_fine: np.ndarray, xx_fine: np.ndarray, yy_fine: np.ndarray, light: LightSource, dpi: int,
+    z_min: float, z_max: float,
     plot_props_true: tuple,
     plot_props_recon: tuple,
     plot_props_error: tuple,
@@ -1700,19 +1703,19 @@ def _render_3d_reconstruction_frame(
 
     # --- Left Plot: True Field ---
     ax_true = fig.add_subplot(gs[0, 0], projection='3d')
-    _plot_surface_on_ax(ax_true, z_true_frame, q_true_frame, color_data_true_frame, z_main_min, z_main_max, c_mode_true, c_map_true)
+    _plot_surface_on_ax(ax_true, z_true_frame, q_true_frame, color_data_true_frame, z_min, z_max, c_mode_true, c_map_true)
     ax_true.set_title("Full True")
     ax_true.set_zlabel(z_lbl_true, labelpad=-8)
 
     # --- Middle Plot: Reconstruction ---
     ax_recon = fig.add_subplot(gs[0, 1], projection='3d')
-    _plot_surface_on_ax(ax_recon, z_recon_frame, q_recon_frame, color_data_recon_frame, z_main_min, z_main_max, c_mode_recon, c_map_recon)
+    _plot_surface_on_ax(ax_recon, z_recon_frame, q_recon_frame, color_data_recon_frame, z_min, z_max, c_mode_recon, c_map_recon)
     ax_recon.set_title(f"Mean + Top {n_val} Predicted")
     ax_recon.set_zlabel(z_lbl_recon, labelpad=-8)
 
     # --- Right Plot: Error ---
     ax_error = fig.add_subplot(gs[0, 2], projection='3d')
-    _plot_surface_on_ax(ax_error, z_error_frame, q_error_frame, color_data_error_frame, z_err_min, z_err_max, c_mode_error, c_map_error)
+    _plot_surface_on_ax(ax_error, z_error_frame, q_error_frame, color_data_error_frame, z_min, z_max, c_mode_error, c_map_error)
     ax_error.set_title("Error")
     ax_error.set_zlabel(z_lbl_error, labelpad=-8)
 
@@ -1783,12 +1786,10 @@ def animate_3d_reconstruction_comparison(
         z_error, q_color_error, z_lbl_error, c_mode_error, c_map_error = _get_z_and_color_data(q_error, equation)
         color_error = q_color_error if c_mode_error == 'colormap' else None
 
-        # Calculate z-limits for the error plot for this n
-        z_abs_error = max(abs(z_error.min()), abs(z_error.max()))
-        if z_abs_error < 1e-9: z_abs_error = 1.0
-        z_min_err, z_max_err = -z_abs_error, z_abs_error
-
-        z_min_main, z_max_main = min(z_true.min(), z_recon.min()), max(z_true.max(), z_recon.max())
+        # Calculate global z-limits for all three plots for this n
+        z_min, z_max = min(z_true.min(), z_recon.min(), z_error.min()), max(z_true.max(), z_recon.max(), z_error.max())
+        if z_max - z_min < 1e-9:
+            z_max = z_min + 1.0
 
         with tempfile.TemporaryDirectory() as temp_dir:
             frame_dir = Path(temp_dir)
@@ -1800,8 +1801,7 @@ def animate_3d_reconstruction_comparison(
                     q_recon[frame], z_recon[frame], color_recon[frame] if color_recon is not None else None,
                     q_error[frame], z_error[frame], color_error[frame] if color_error is not None else None,
                     frame_dir / f"frame_{frame:05d}.png", n,
-                    x, y, x_fine, y_fine, xx_fine, yy_fine, light, dpi,
-                    z_min_main, z_max_main, z_min_err, z_max_err,
+                    x, y, x_fine, y_fine, xx_fine, yy_fine, light, dpi, z_min, z_max,
                     (z_lbl_true, c_mode_true, c_map_true),
                     (z_lbl_recon, c_mode_recon, c_map_recon),
                     (z_lbl_error, c_mode_error, c_map_error),
