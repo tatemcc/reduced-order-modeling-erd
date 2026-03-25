@@ -1131,6 +1131,8 @@ def animate_3d_surface(
                 "-framerate", str(fps),
                 "-i", str(frame_dir / "frame_%05d.png"),
                 "-c:v", "libx264",
+                "-profile:v", "main", # Force a more compatible H.264 profile
+                "-vf", "scale=min(1920\\,iw):-2", # Scale to compatible width, keep aspect ratio
                 "-pix_fmt", "yuv420p",  # For broad player compatibility
                 "-crf", "17",  # Visually lossless quality
                 "-preset", "fast", # Good speed/compression balance
@@ -1314,6 +1316,7 @@ def _render_3d_decomposition_frame( # type: ignore
     light: LightSource,
     dpi: int,
     z_contrib_lims: List[Tuple[float, float]],
+    show_titles: bool,
 ):
     """Renders a single frame of the 3D decomposition animation."""
     # This function is self-contained to be picklable for multiprocessing.
@@ -1353,67 +1356,93 @@ def _render_3d_decomposition_frame( # type: ignore
         ax.tick_params(axis='x', pad=-5); ax.tick_params(axis='y', pad=-5); ax.tick_params(axis='z', pad=-3)
 
     # --- Figure Layout ---
-    n_plot_rows = n_modes_to_plot + (1 if has_mean else 0)
+    n_plot_rows = n_modes_to_plot
+    fig_width = 28 if has_mean else 22
     fig_height = 4 * n_plot_rows
-    fig = plt.figure(figsize=(22, max(fig_height, 7)), dpi=dpi)
+    fig = plt.figure(figsize=(fig_width, max(fig_height, 7)), dpi=dpi)
     # Adjust margins to use more of the figure area
     fig.subplots_adjust(left=0.02, right=0.99, bottom=0.05, top=0.93)
 
-    gs = gridspec.GridSpec(
-        n_plot_rows + 1, 7,
-        width_ratios=[8, 0.5, 4, 0.5, 4, 0.5, 4],  # Wider plots, narrower spacers
-        height_ratios=[1] * n_plot_rows + [0.2],
-        wspace=0.3, hspace=0.5
-    )
+    if has_mean:
+        # 9 columns: main, approx, mean, plus, contrib, eq, topos, mul, chronos
+        gs = gridspec.GridSpec(
+            n_plot_rows + 1, 9,
+            width_ratios=[8, 0.5, 4, 0.5, 4, 0.5, 4, 0.5, 4],
+            height_ratios=[1] * n_plot_rows + [0.2],
+            wspace=0.3, hspace=0.5
+        )
+        main_col, approx_col = 0, 1
+        mean_col, plus_col = 2, 3
+        contrib_col, eq_col, topos_col, mul_col, chronos_col = 4, 5, 6, 7, 8
+    else:
+        # 7 columns: main, approx, contrib, eq, topos, mul, chronos
+        gs = gridspec.GridSpec(
+            n_plot_rows + 1, 7,
+            width_ratios=[8, 0.5, 4, 0.5, 4, 0.5, 4],
+            height_ratios=[1] * n_plot_rows + [0.2],
+            wspace=0.3, hspace=0.5
+        )
+        main_col, approx_col = 0, 1
+        contrib_col, eq_col, topos_col, mul_col, chronos_col = 2, 3, 4, 5, 6
+
     fig.suptitle(f"Decomposition at Time Step {frame}", fontsize=16)
 
     # --- Main Plot ---
-    ax_main = fig.add_subplot(gs[0:n_plot_rows, 0], projection='3d')
+    ax_main = fig.add_subplot(gs[0:n_plot_rows, main_col], projection='3d')
     _plot_surface_on_ax(
         ax_main, z_true_frame, q_true_frame, color_data_true_frame, z_main_min, z_main_max,
         main_color_mode, main_cmap, interp_k=2
     )
-    ax_main.set_title(f"True Field ({main_z_label})")
+    if show_titles:
+        ax_main.set_title(f"True Field ({main_z_label})")
     ax_main.set_zlabel(main_z_label, labelpad=-8)
 
     # '≈' symbol in its own axes for robust alignment
-    ax_approx = fig.add_subplot(gs[0:n_plot_rows, 1])
+    ax_approx = fig.add_subplot(gs[0:n_plot_rows, approx_col])
     ax_approx.text(0.5, 0.5, '≈', ha='center', va='center', fontsize=60, color='gray', transform=ax_approx.transAxes)
     ax_approx.axis('off')
 
     # --- Mean Topos Plot (if exists) ---
     if has_mean:
-        ax_mean = fig.add_subplot(gs[0, 2], projection='3d')
+        ax_mean = fig.add_subplot(gs[0:n_plot_rows, mean_col], projection='3d')
         _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(q_mean_field, equation)
         _plot_surface_on_ax(ax_mean, z_mean, q_mean_field, color_mean, z_mean.min(), z_mean.max(), c_mode, c_map, interp_k=2)
-        ax_mean.set_title("Mean Topos", fontsize=10)
+        if show_titles:
+            ax_mean.set_title("Mean Topos", fontsize=10)
         ax_mean.set_zlabel(z_lbl, labelpad=-8)
+
+        ax_plus_mean = fig.add_subplot(gs[0:n_plot_rows, plus_col])
+        ax_plus_mean.text(0.5, 0.5, '+', ha='center', va='center', fontsize=24, transform=ax_plus_mean.transAxes)
+        ax_plus_mean.axis('off')
 
     # --- Mode Plots ---
     for i in range(n_modes_to_plot):
-        row_idx = i + (1 if has_mean else 0)
+        row_idx = i
         
         # Get consistent visualization properties for this mode's plots
         _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(topos_fields[i], equation)
 
         # Animated Contribution Plot
-        ax_contrib = fig.add_subplot(gs[row_idx, 2], projection='3d')
+        ax_contrib = fig.add_subplot(gs[row_idx, contrib_col], projection='3d')
         z_min_c, z_max_c = z_contrib_lims[i]
         _plot_surface_on_ax(ax_contrib, z_contrib_frames[i], q_contrib_frames[i], color_contrib_frames[i], z_min_c, z_max_c, c_mode, c_map, interp_k=2)
-        ax_contrib.set_title(f"Mode {i} Contribution", fontsize=10)
+        if show_titles:
+            ax_contrib.set_title(f"Mode {i} Contribution", fontsize=10)
         ax_contrib.set_zlabel(z_lbl, labelpad=-8)
 
         # Static Topos Plot
-        ax_t = fig.add_subplot(gs[row_idx, 4], projection='3d')
+        ax_t = fig.add_subplot(gs[row_idx, topos_col], projection='3d')
         _plot_surface_on_ax(ax_t, z_topos[i], topos_fields[i], color_topos[i], z_topos[i].min(), z_topos[i].max(), c_mode, c_map, interp_k=2)
-        ax_t.set_title(f"Topos (Mode {i})", fontsize=10)
+        if show_titles:
+            ax_t.set_title(f"Topos (Mode {i})", fontsize=10)
         ax_t.set_zlabel(z_lbl, labelpad=-8)
 
         # Chronos Plot
-        ax_c = fig.add_subplot(gs[row_idx, 6])
+        ax_c = fig.add_subplot(gs[row_idx, chronos_col])
         ax_c.plot(np.arange(T), A_true[:, i], color=f"C{i}")
         ax_c.plot([frame], [A_true[frame, i]], 'o', color='red', markersize=8)
-        ax_c.set_title(f"Chronos (Mode {i})", fontsize=10)
+        if show_titles:
+            ax_c.set_title(f"Chronos (Mode {i})", fontsize=10)
         ax_c.set_xlabel("Time Step", fontsize=8); ax_c.set_ylabel("Amplitude", fontsize=8)
         ax_c.grid(True, alpha=0.3); ax_c.tick_params(axis='both', which='major', labelsize=8)
 
@@ -1423,16 +1452,16 @@ def _render_3d_decomposition_frame( # type: ignore
             fig.text(pos_contrib.x0 + pos_contrib.width / 2, pos_contrib.y1 + 0.02, '+', ha='center', va='center', fontsize=24)
 
         # Add text symbols for this row using dedicated axes for alignment
-        ax_eq = fig.add_subplot(gs[row_idx, 3])
+        ax_eq = fig.add_subplot(gs[row_idx, eq_col])
         ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=24, transform=ax_eq.transAxes)
         ax_eq.axis('off')
 
-        ax_mul = fig.add_subplot(gs[row_idx, 5])
+        ax_mul = fig.add_subplot(gs[row_idx, mul_col])
         ax_mul.text(0.5, 0.5, '×', ha='center', va='center', fontsize=24, transform=ax_mul.transAxes)
         ax_mul.axis('off')
 
     if r > n_modes_to_plot:
-        ax_placeholder = fig.add_subplot(gs[n_plot_rows, 2]); ax_placeholder.axis('off')
+        ax_placeholder = fig.add_subplot(gs[n_plot_rows, contrib_col]); ax_placeholder.axis('off')
         pos = ax_placeholder.get_position()
         # Center the '...' horizontally
         fig.text(pos.x0 + pos.width / 2, pos.y0 + pos.height, '+  . . .', ha='center', va='center', fontsize=20)
@@ -1520,6 +1549,9 @@ def animate_3d_decomposition(
     if plot_cfg is not None:
         use_parallel = getattr(plot_cfg, "movie_3d_parallel", False)
 
+    # Pass down the title toggle
+    show_titles = getattr(plot_cfg, "movie_3d_decomposition_show_titles", True)
+
     if use_parallel and plot_cfg is not None:
         # --- Parallel Rendering Path ---
         n_procs = plot_cfg.movie_3d_parallel_procs or multiprocessing.cpu_count() // 2 or 1
@@ -1551,6 +1583,7 @@ def animate_3d_decomposition(
                     A_true, z_true.min(), z_true.max(),
                     x, y, x_fine, y_fine, xx_fine, yy_fine, light, dpi,
                     z_contrib_lims,
+                    show_titles,
                 )
                 tasks.append(task_args)
 
@@ -1567,7 +1600,9 @@ def animate_3d_decomposition(
             ffmpeg_cmd = [
                 "ffmpeg", "-y", "-framerate", str(fps),
                 "-i", str(frame_dir / "frame_%05d.png"),
-                "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "17", "-preset", "fast",
+                "-c:v", "libx264", "-profile:v", "main", # Force a more compatible H.264 profile
+                "-vf", "scale=min(1920\\,iw):-2", # Scale to compatible width, keep aspect ratio
+                "-pix_fmt", "yuv420p", "-crf", "17", "-preset", "fast",
                 str(output_path),
             ]
             try:
