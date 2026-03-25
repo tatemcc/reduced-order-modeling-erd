@@ -1289,6 +1289,7 @@ def _render_3d_decomposition_frame( # type: ignore
     main_z_label: str,
     main_color_mode: str,
     main_cmap: str,
+    equation: str,
     # Mean state data (optional)
     has_mean: bool,
     q_mean_field: Optional[np.ndarray],
@@ -1354,15 +1355,17 @@ def _render_3d_decomposition_frame( # type: ignore
     # --- Figure Layout ---
     n_plot_rows = n_modes_to_plot + (1 if has_mean else 0)
     fig_height = 4 * n_plot_rows
-    fig = plt.figure(figsize=(24, max(fig_height, 8)), dpi=dpi)
+    fig = plt.figure(figsize=(22, max(fig_height, 7)), dpi=dpi)
+    # Adjust margins to use more of the figure area
+    fig.subplots_adjust(left=0.02, right=0.99, bottom=0.05, top=0.93)
+
     gs = gridspec.GridSpec(
         n_plot_rows + 1, 7,
-        width_ratios=[6, 0.7, 3, 0.4, 3, 0.4, 3],
+        width_ratios=[8, 0.5, 4, 0.5, 4, 0.5, 4],  # Wider plots, narrower spacers
         height_ratios=[1] * n_plot_rows + [0.2],
-        wspace=0.5, hspace=0.6
+        wspace=0.3, hspace=0.5
     )
     fig.suptitle(f"Decomposition at Time Step {frame}", fontsize=16)
-    fig.text(0.38, 0.5, '≈', transform=fig.transFigure, ha='center', va='center', fontsize=60, color='gray')
 
     # --- Main Plot ---
     ax_main = fig.add_subplot(gs[0:n_plot_rows, 0], projection='3d')
@@ -1373,10 +1376,15 @@ def _render_3d_decomposition_frame( # type: ignore
     ax_main.set_title(f"True Field ({main_z_label})")
     ax_main.set_zlabel(main_z_label, labelpad=-8)
 
+    # '≈' symbol in its own axes for robust alignment
+    ax_approx = fig.add_subplot(gs[0:n_plot_rows, 1])
+    ax_approx.text(0.5, 0.5, '≈', ha='center', va='center', fontsize=60, color='gray', transform=ax_approx.transAxes)
+    ax_approx.axis('off')
+
     # --- Mean Topos Plot (if exists) ---
     if has_mean:
         ax_mean = fig.add_subplot(gs[0, 2], projection='3d')
-        _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(q_mean_field, "burgers") # Use burgers for consistent viz
+        _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(q_mean_field, equation)
         _plot_surface_on_ax(ax_mean, z_mean, q_mean_field, color_mean, z_mean.min(), z_mean.max(), c_mode, c_map, interp_k=2)
         ax_mean.set_title("Mean Topos", fontsize=10)
         ax_mean.set_zlabel(z_lbl, labelpad=-8)
@@ -1386,7 +1394,7 @@ def _render_3d_decomposition_frame( # type: ignore
         row_idx = i + (1 if has_mean else 0)
         
         # Get consistent visualization properties for this mode's plots
-        _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(topos_fields[i], "burgers")
+        _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(topos_fields[i], equation)
 
         # Animated Contribution Plot
         ax_contrib = fig.add_subplot(gs[row_idx, 2], projection='3d')
@@ -1409,21 +1417,25 @@ def _render_3d_decomposition_frame( # type: ignore
         ax_c.set_xlabel("Time Step", fontsize=8); ax_c.set_ylabel("Amplitude", fontsize=8)
         ax_c.grid(True, alpha=0.3); ax_c.tick_params(axis='both', which='major', labelsize=8)
 
-        # Add text symbols for this row
+        # Add '+' symbol between rows, centered on the plot column
         pos_contrib = ax_contrib.get_position()
         if row_idx > 0: # Add '+' between rows
-            fig.text(pos_contrib.x0, pos_contrib.y1 + 0.02, '+', ha='center', va='center', fontsize=24)
+            fig.text(pos_contrib.x0 + pos_contrib.width / 2, pos_contrib.y1 + 0.02, '+', ha='center', va='center', fontsize=24)
 
-        pos_t = ax_t.get_position()
-        fig.text(pos_t.x0 - 0.02, pos_t.y0 + pos_t.height / 2, '=', ha='center', va='center', fontsize=24)
+        # Add text symbols for this row using dedicated axes for alignment
+        ax_eq = fig.add_subplot(gs[row_idx, 3])
+        ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=24, transform=ax_eq.transAxes)
+        ax_eq.axis('off')
 
-        pos_c = ax_c.get_position()
-        fig.text(pos_c.x0 - 0.025, pos_c.y0 + pos_c.height / 2, '×', ha='center', va='center', fontsize=24)
+        ax_mul = fig.add_subplot(gs[row_idx, 5])
+        ax_mul.text(0.5, 0.5, '×', ha='center', va='center', fontsize=24, transform=ax_mul.transAxes)
+        ax_mul.axis('off')
 
     if r > n_modes_to_plot:
         ax_placeholder = fig.add_subplot(gs[n_plot_rows, 2]); ax_placeholder.axis('off')
         pos = ax_placeholder.get_position()
-        fig.text(pos.x0, pos.y0 + pos.height, '+  . . .', ha='left', va='center', fontsize=20)
+        # Center the '...' horizontally
+        fig.text(pos.x0 + pos.width / 2, pos.y0 + pos.height, '+  . . .', ha='center', va='center', fontsize=20)
 
     fig.savefig(output_path)
     plt.close(fig)
@@ -1528,7 +1540,7 @@ def animate_3d_decomposition(
                     z_true[frame],
                     color_data_true[frame] if color_data_true is not None else None,
                     frame_dir / f"frame_{frame:05d}.png",
-                    T, n_modes_to_plot, r, nx, ny, main_z_label, main_color_mode, main_cmap,
+                    T, n_modes_to_plot, r, nx, ny, main_z_label, main_color_mode, main_cmap, equation,
                     has_mean, q_mean_field, z_mean, color_mean,
                     topos_fields,
                     z_topos,

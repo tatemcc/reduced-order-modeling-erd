@@ -2,7 +2,7 @@
 name: burgers_rom_local
 seed: 0
 data:
-  equation: burgers
+  equation: gasdynamics
   structure: grid
   resolution: low
   split: train
@@ -16,7 +16,7 @@ data:
   time_stride: 1
   time_limit: null
 pod:
-  rank: 12
+  rank: 8
   energy_fraction: null
   center: true
 deriv:
@@ -49,7 +49,7 @@ sindy:
   optimizer: trappingsr3
   optimizer_params:
     eta: 100
-    threshold: 0.0500391902
+    threshold: 0.0500391954
     alpha: 100
     beta: 100
     max_iter: 80
@@ -63,4 +63,5 @@ plots:
   movie_3d_interp_factor: 3
   movie_3d_mode_contributions: false
   movie_3d_parallel: true
+  movie_3d_parallel_procs: 4
   movie_3d_decomposition: true
