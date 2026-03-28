@@ -179,6 +179,10 @@ class PlotConfig:
     basis_n_modes: int = 8
     basis_cmap: str = "viridis"
 
+    # POD decomposition matrix
+    pod_decomposition_matrix: bool = True
+    pod_decomposition_matrix_square_pixels: bool = True
+
     # Rollout visualization
     rollout_cmap: str = "viridis"
     movie_fps: int = 15

@@ -249,6 +249,193 @@ def plot_pod_singular_values(
     _savefig(fig, out_dir / "pod_cumulative_energy.png", dpi=dpi)
 
 
+def plot_pod_decomposition_matrix(
+    pod: PODResult,
+    out_dir: Path,
+    dpi: int,
+) -> None:
+    """
+    Plot the POD decomposition X_r = U @ A as a horizontal heatmap diagram.
+
+    Parameters
+    ----------
+    pod : PODResult
+        POD results containing U and A.
+    out_dir : Path
+        Output directory for figures.
+    dpi : int
+        DPI for saving.
+    """
+    U = pod.U
+    A = pod.A
+    r = pod.r
+    n_state, _ = U.shape
+    _, M = A.shape
+
+    if M == 0 or r == 0 or n_state == 0:
+        print("Skipping POD decomposition matrix plot due to zero dimension.")
+        return
+
+    # Reconstruct the snapshot matrix from the truncated POD (fluctuations part)
+    X_r = U @ A
+
+    vmax_X = np.max(np.abs(X_r))
+    vmax_U = np.max(np.abs(U))
+    vmax_A = np.max(np.abs(A))
+
+    fig = plt.figure(figsize=(20, 5))
+    # Layout: X_r = U x A
+    # Proportional widths for matrices, with small gaps for operators
+    gs = gridspec.GridSpec(1, 5, width_ratios=[M, M * 0.1, r, r * 0.5, M])
+
+    ax_X = fig.add_subplot(gs[0, 0])
+    ax_eq = fig.add_subplot(gs[0, 1])
+    ax_U = fig.add_subplot(gs[0, 2])
+    ax_mul = fig.add_subplot(gs[0, 3])
+    ax_A = fig.add_subplot(gs[0, 4])
+
+    # Plot matrices
+    ax_X.imshow(X_r, cmap='plasma', interpolation='nearest', aspect='auto', vmin=-vmax_X if vmax_X > 0 else -1, vmax=vmax_X if vmax_X > 0 else 1)
+    ax_X.set_title(f'Reconstruction X_r\n({n_state}x{M})')
+
+    ax_U.imshow(U, cmap='plasma', interpolation='nearest', aspect='auto', vmin=-vmax_U if vmax_U > 0 else -1, vmax=vmax_U if vmax_U > 0 else 1)
+    ax_U.set_title(f'Topos U\n({n_state}x{r})')
+
+    ax_A.imshow(A, cmap='plasma', interpolation='nearest', aspect='auto', vmin=-vmax_A if vmax_A > 0 else -1, vmax=vmax_A if vmax_A > 0 else 1)
+    ax_A.set_title(f'Chronos A\n({r}x{M})')
+
+    for ax in [ax_X, ax_U, ax_A]:
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=40)
+    ax_eq.axis('off')
+    ax_mul.text(0.5, 0.5, 'x', ha='center', va='center', fontsize=30)
+    ax_mul.axis('off')
+
+    fig.suptitle("POD Decomposition: X_r = U x A", fontsize=16)
+    try:
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+    except ValueError:
+        # tight_layout can sometimes fail with gridspec, but it's not critical
+        pass
+    _savefig(fig, out_dir / "pod_decomposition_matrix.png", dpi=dpi)
+
+
+def plot_pod_decomposition_matrix_square_pixels(
+    pod: PODResult,
+    out_dir: Path,
+    dpi: int,
+) -> None:
+    """
+    Plot the POD decomposition X_r = U @ A as a horizontal heatmap diagram,
+    ensuring pixels are square and of the same size across all matrices.
+
+    Parameters
+    ----------
+    pod : PODResult
+        POD results containing U and A.
+    out_dir : Path
+        Output directory for figures.
+    dpi : int
+        DPI for saving.
+    """
+    U = pod.U
+    A = pod.A
+    r = pod.r
+    n_state, _ = U.shape
+    _, M = A.shape
+
+    if M == 0 or r == 0 or n_state == 0:
+        print("Skipping POD decomposition matrix (square) plot due to zero dimension.")
+        return
+
+    X_r = U @ A
+
+    vmax_X = np.max(np.abs(X_r))
+    vmax_U = np.max(np.abs(U))
+    vmax_A = np.max(np.abs(A))
+
+    D, R, T = n_state, r, M
+
+    # Define column widths proportional to matrix widths to make pixels square.
+    # The operators (=, x) get widths proportional to the matrix dimensions.
+    width_ratios = [T, 0.1 * T, R, 0.5 * R, T]
+    total_width_units = sum(width_ratios)
+    total_height_units = D
+
+    # Set figure size to match the overall aspect ratio of the layout.
+    # This is key to making the pixels square.
+    base_width = 20.0  # inches
+    if total_width_units <= 0 or total_height_units <= 0:
+        return # Avoid division by zero
+
+    fig_width = base_width
+    fig_height = base_width * (total_height_units / total_width_units)
+
+    # Cap max height and rescale width to maintain aspect ratio
+    max_height = 10.0
+    if fig_height > max_height:
+        fig_height = max_height
+        fig_width = max_height * (total_width_units / total_height_units)
+
+    fig = plt.figure(figsize=(fig_width, fig_height))
+
+    if D > R:
+        # Use a 2-row GridSpec to handle matrices of different heights (D vs R).
+        # The height ratios are set to match the matrix row dimensions.
+        gs = gridspec.GridSpec(2, 5,
+                               width_ratios=width_ratios,
+                               height_ratios=[R, D - R],
+                               hspace=0)
+
+        # X_r and U span both rows to have a total height proportional to D.
+        ax_X = fig.add_subplot(gs[0:2, 0])
+        ax_eq = fig.add_subplot(gs[0:2, 1])
+        ax_U = fig.add_subplot(gs[0:2, 2])
+        ax_mul = fig.add_subplot(gs[0:2, 3])
+        # A is in the top row, with height proportional to R.
+        ax_A = fig.add_subplot(gs[0, 4])
+        # Add a dummy axis to fill the space below A.
+        ax_dummy = fig.add_subplot(gs[1, 4])
+        ax_dummy.axis('off')
+
+    else:  # D == R, all matrices have the same height.
+        gs = gridspec.GridSpec(1, 5, width_ratios=width_ratios)
+        ax_X = fig.add_subplot(gs[0, 0])
+        ax_eq = fig.add_subplot(gs[0, 1])
+        ax_U = fig.add_subplot(gs[0, 2])
+        ax_mul = fig.add_subplot(gs[0, 3])
+        ax_A = fig.add_subplot(gs[0, 4])
+
+    # Plot matrices. 'aspect="auto"' fills the axes. Since the axes and figure
+    # have the correct aspect ratio from GridSpec, the pixels will be square.
+    ax_X.imshow(X_r, cmap='plasma', interpolation='nearest', aspect='auto', vmin=-vmax_X if vmax_X > 0 else -1, vmax=vmax_X if vmax_X > 0 else 1)
+    ax_X.set_title(f'Reconstruction X_r\n({D}x{T})')
+
+    ax_U.imshow(U, cmap='plasma', interpolation='nearest', aspect='auto', vmin=-vmax_U if vmax_U > 0 else -1, vmax=vmax_U if vmax_U > 0 else 1)
+    ax_U.set_title(f'Topos U\n({D}x{R})')
+
+    ax_A.imshow(A, cmap='plasma', interpolation='nearest', aspect='auto', vmin=-vmax_A if vmax_A > 0 else -1, vmax=vmax_A if vmax_A > 0 else 1)
+    ax_A.set_title(f'Chronos A\n({R}x{T})')
+
+    for ax in [ax_X, ax_U, ax_A]:
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=40)
+    ax_eq.axis('off')
+    ax_mul.text(0.5, 0.5, 'x', ha='center', va='center', fontsize=30)
+    ax_mul.axis('off')
+
+    fig.suptitle("POD Decomposition (Square Pixels): X_r = U x A", fontsize=16)
+    try:
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+    except ValueError:
+        pass
+    _savefig(fig, out_dir / "pod_decomposition_matrix_square_pixels.png", dpi=dpi)
+
+
 def plot_pod_basis_fields(
     U: np.ndarray,
     layout: SnapshotLayout,
@@ -2007,6 +2194,13 @@ def generate_all_plots_and_movies(
 
     (fig_dir / "pod_basis").mkdir(parents=True, exist_ok=True)
     plot_pod_singular_values(pod=pod, out_dir=fig_dir, dpi=cfg.dpi)
+
+    if getattr(cfg, "pod_decomposition_matrix", False):
+        plot_pod_decomposition_matrix(pod=pod, out_dir=fig_dir, dpi=cfg.dpi)
+    
+    if getattr(cfg, "pod_decomposition_matrix_square_pixels", False):
+        plot_pod_decomposition_matrix_square_pixels(pod=pod, out_dir=fig_dir, dpi=cfg.dpi)
+
     plot_pod_basis_fields(
         U=pod.U,
         layout=layout,
