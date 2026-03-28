@@ -249,6 +249,91 @@ def plot_pod_singular_values(
     _savefig(fig, out_dir / "pod_cumulative_energy.png", dpi=dpi)
 
 
+def plot_pod_singular_values_scatterplot(
+    pod: PODResult,
+    out_dir: Path,
+    dpi: int,
+) -> None:
+    """
+    Plot singular values vs. their rank as a scatter plot.
+
+    Parameters
+    ----------
+    pod : PODResult
+        POD results.
+    out_dir : Path
+        Output directory for figures.
+    dpi : int
+        DPI for saving.
+    """
+    s = np.asarray(pod.s)
+    ranks = np.arange(1, len(s) + 1)
+    r_trunc = pod.r
+
+    fig = plt.figure()
+    # Using a small marker size to prevent overlap
+    plt.scatter(ranks, s, s=5)
+
+    # Add a vertical line to indicate the truncation rank
+    if r_trunc < len(s):
+        plt.axvline(x=r_trunc + 0.5, color='r', linestyle='--', linewidth=1, label=f'Truncation (r={r_trunc})')
+        plt.legend()
+
+    plt.xlabel("Mode Rank")
+    plt.ylabel("Singular Value")
+    plt.title("POD Singular Values vs. Rank")
+    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+    _savefig(fig, out_dir / "pod_singular_values_scatter.png", dpi=dpi)
+
+
+def plot_pod_energy_scatterplot(
+    pod: PODResult,
+    out_dir: Path,
+    dpi: int,
+    equation: str,
+) -> None:
+    """
+    Plot modal energy (squared singular values) vs. their rank.
+
+    This plot shows the distribution of "energy" (variance) across the POD
+    modes. The modal energy s^2 is a mathematical quantity from the SVD
+    and is not a physical energy. This concept is general and applies to
+    any system decomposed with POD.
+
+    Parameters
+    ----------
+    pod : PODResult
+        POD results.
+    out_dir : Path
+        Output directory for figures.
+    dpi : int
+        DPI for saving.
+    equation : str
+        Name of the equation, used for the plot title.
+    """
+    s = np.asarray(pod.s)
+    # The modal energy is the squared singular value. This represents the
+    # contribution of the mode to the total variance of the snapshot data.
+    # This definition is independent of the specific PDE.
+    energy = s**2
+    ranks = np.arange(1, len(s) + 1)
+    r_trunc = pod.r
+
+    fig = plt.figure()
+    # Using a small marker size to prevent overlap
+    plt.scatter(ranks, energy, s=5)
+
+    # Add a vertical line to indicate the truncation rank
+    if r_trunc < len(s):
+        plt.axvline(x=r_trunc + 0.5, color='r', linestyle='--', linewidth=1, label=f'Truncation (r={r_trunc})')
+        plt.legend()
+
+    plt.xlabel("Mode Rank")
+    plt.ylabel("Modal Energy ($s^2$)")
+    plt.title(f"POD Modal Energy vs. Rank for {equation.title()}")
+    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+    _savefig(fig, out_dir / "pod_energy_scatter.png", dpi=dpi)
+
 def plot_pod_decomposition_matrix(
     pod: PODResult,
     out_dir: Path,
@@ -2194,6 +2279,8 @@ def generate_all_plots_and_movies(
 
     (fig_dir / "pod_basis").mkdir(parents=True, exist_ok=True)
     plot_pod_singular_values(pod=pod, out_dir=fig_dir, dpi=cfg.dpi)
+    plot_pod_singular_values_scatterplot(pod=pod, out_dir=fig_dir, dpi=cfg.dpi)
+    plot_pod_energy_scatterplot(pod=pod, out_dir=fig_dir, dpi=cfg.dpi, equation=equation)
 
     if getattr(cfg, "pod_decomposition_matrix", False):
         plot_pod_decomposition_matrix(pod=pod, out_dir=fig_dir, dpi=cfg.dpi)
