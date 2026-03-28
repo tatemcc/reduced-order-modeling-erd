@@ -2183,6 +2183,106 @@ def animate_3d_reconstruction_comparison(
             except (FileNotFoundError, subprocess.CalledProcessError) as e:
                 print(f"ERROR: ffmpeg failed for n={n}. Is it installed? Details:\n{e}")
 
+
+def animate_chronos_comparison(
+    rollout: RolloutResult,
+    pod: PODResult,
+    output_path: Path,
+    fps: int,
+    dpi: int,
+) -> None:
+    """
+    Animate the comparison of true vs. predicted chronos for the top modes.
+
+    Layout:
+    - Vertical stack of line graphs for the top 3 modes.
+    - Each graph shows true (solid) and predicted (dashed) coefficient evolution.
+    - A vertical line sweeps through to indicate the current time.
+    - A visual representation of "+ more modes" is shown below.
+
+    Parameters
+    ----------
+    rollout : RolloutResult
+        Rollout results containing A_true and A_pred.
+    pod : PODResult
+        POD results to get the total rank.
+    output_path : Path
+        Destination path for the movie file.
+    fps : int
+        Frames per second for the animation.
+    dpi : int
+        DPI for rendering frames.
+    """
+    A_true = rollout.A_true
+    A_pred = rollout.A_pred
+    T, r = A_true.shape
+
+    if A_pred.shape != (T, r):
+        raise ValueError("A_true and A_pred must have the same shape.")
+
+    n_modes_to_plot = min(3, r)
+    if n_modes_to_plot == 0:
+        print("Skipping chronos comparison movie: no modes to plot.")
+        return
+
+    # Setup figure and GridSpec
+    # n rows for plots, 1 for text, 1 for bar
+    fig = plt.figure(figsize=(8, 2.5 * n_modes_to_plot + 1.5), dpi=dpi)
+    gs = gridspec.GridSpec(n_modes_to_plot + 2, 1, height_ratios=[4] * n_modes_to_plot + [1, 1])
+
+    axes = [fig.add_subplot(gs[i, 0]) for i in range(n_modes_to_plot)]
+    ax_text = fig.add_subplot(gs[n_modes_to_plot, 0])
+    ax_bar = fig.add_subplot(gs[n_modes_to_plot + 1, 0])
+
+    time_axis = np.arange(T)
+    v_lines = []
+
+    # Plot static lines and initial vertical line
+    for i in range(n_modes_to_plot):
+        ax = axes[i]
+        ax.plot(time_axis, A_true[:, i], color=f"C{i}", linestyle='-', label="True")
+        ax.plot(time_axis, A_pred[:, i], color=f"C{i}", linestyle='--', label="Predicted")
+        line = ax.axvline(x=0, color='r', linestyle='-', linewidth=2)
+        v_lines.append(line)
+
+        ax.set_title(f"Chronos (Mode {i})")
+        ax.set_ylabel("Amplitude")
+        ax.grid(True, alpha=0.4)
+        if i == 0:
+            ax.legend(loc='upper right')
+        if i < n_modes_to_plot - 1:
+            ax.set_xticklabels([])  # Remove x-tick labels for upper plots
+
+    axes[-1].set_xlabel("Time Step")
+
+    if r > n_modes_to_plot:
+        ax_text.text(0.5, 0.5, "+ more modes", ha='center', va='center', fontsize=14, style='italic', color='gray')
+    ax_text.axis('off')
+
+    ax_bar.axhline(y=0.5, xmin=0.1, xmax=0.9, color='black', linewidth=5)
+    ax_bar.text(0.1, 0.55, '+', ha='center', va='bottom', fontsize=20, color='black')
+    ax_bar.set_ylim(0, 1)
+    ax_bar.axis('off')
+
+    fig.suptitle("Chronos Comparison: True vs. Predicted")
+    fig.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+    def update(frame):
+        for line in v_lines:
+            line.set_xdata([frame])
+        return v_lines
+
+    ani = animation.FuncAnimation(fig, update, frames=T, blit=True, interval=1000 / fps)
+    writer = "ffmpeg" if output_path.suffix == ".mp4" else "pillow"
+    try:
+        ani.save(output_path, writer=writer, fps=fps)
+        print(f"Saved chronos comparison animation to {output_path}")
+    except Exception as e:
+        print(f"Failed to save animation: {e}")
+    finally:
+        plt.close(fig)
+
+
 def _reconstruct_fields_from_modes(
     U: np.ndarray,
     A: np.ndarray,
@@ -2423,6 +2523,16 @@ def generate_all_plots_and_movies(
             interp_factor=interp_factor,
             plot_cfg=cfg,
             is_centered=is_centered,
+        )
+
+    if getattr(cfg, "movie_chronos_comparison", False):
+        print("Generating chronos comparison movie...")
+        animate_chronos_comparison(
+            rollout=rollout,
+            pod=pod,
+            output_path=mov_dir / "chronos_comparison.mp4",
+            fps=cfg.movie_fps,
+            dpi=cfg.dpi,
         )
 
     if getattr(cfg, "movie_3d_mode_contributions", False):

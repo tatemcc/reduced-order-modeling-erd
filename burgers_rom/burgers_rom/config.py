@@ -198,6 +198,7 @@ class PlotConfig:
     movie_3d_decomposition: bool = False
     movie_3d_decomposition_show_titles: bool = True
     movie_3d_reconstruction_comparison: bool = False
+    movie_chronos_comparison: bool = False
 
     # field error plots
     metrics_curves: bool = True
