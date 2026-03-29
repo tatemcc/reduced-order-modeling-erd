@@ -242,6 +242,7 @@ def run(
             rundir=rundir,
             layout=layout,
             pod=pod,
+            X=X,
             sindy=sindy,
             rollout=rollout,
             mean_state=mean_state,

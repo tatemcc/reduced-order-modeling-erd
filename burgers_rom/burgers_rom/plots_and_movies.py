@@ -34,7 +34,7 @@ from tqdm import tqdm
 from .config import PlotConfig
 from .pod import PODResult
 from .rollout import RolloutResult
-from .snapshot import SnapshotLayout, state_vec_to_fields
+from .snapshot import SnapshotLayout, state_vec_to_fields, fields_to_state_vec
 from .sindy_model import SINDyFitResult
 
 
@@ -519,6 +519,55 @@ def plot_pod_decomposition_matrix_square_pixels(
     except ValueError:
         pass
     _savefig(fig, out_dir / "pod_decomposition_matrix_square_pixels.png", dpi=dpi)
+
+
+def plot_true_state_matrix(
+    X: np.ndarray,
+    out_dir: Path,
+    dpi: int,
+) -> None:
+    """
+    Plot the true state snapshot matrix X as a heatmap with square pixels.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Snapshot matrix of shape (D, T).
+    out_dir : Path
+        Output directory for figures.
+    dpi : int
+        DPI for saving.
+    """
+    D, T = X.shape
+
+    if D == 0 or T == 0:
+        print("Skipping true state matrix plot due to zero dimension.")
+        return
+
+    vmax = np.max(np.abs(X))
+
+    # Set figure size to match the aspect ratio of the matrix.
+    base_width = 20.0  # inches
+    if T <= 0 or D <= 0:
+        return # Avoid division by zero
+    fig_width = base_width
+    fig_height = base_width * (D / T)
+
+    # Cap max height and rescale width to maintain aspect ratio
+    max_height = 10.0
+    if fig_height > max_height:
+        fig_height = max_height
+        fig_width = max_height * (T / D)
+
+    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+
+    ax.imshow(X, cmap='plasma', interpolation='nearest', aspect='auto', vmin=-vmax if vmax > 0 else -1, vmax=vmax if vmax > 0 else 1)
+    ax.set_title(f'Full True State Matrix X\n({D}x{T})')
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    fig.tight_layout()
+    _savefig(fig, out_dir / "true_state_matrix.png", dpi=dpi)
 
 
 def plot_pod_basis_fields(
@@ -2283,6 +2332,91 @@ def animate_chronos_comparison(
         plt.close(fig)
 
 
+def _render_3d_surface_with_state_matrix_frame_wrapper(args: tuple) -> None:
+    """Helper to unpack arguments for multiprocessing.Pool.map."""
+    return _render_3d_surface_with_state_matrix_frame(*args)
+
+
+def _render_3d_surface_with_state_matrix_frame(
+    frame: int,
+    # --- Data for this frame ---
+    q_true_frame: np.ndarray,
+    z_true_frame: np.ndarray,
+    color_data_true_frame: Optional[np.ndarray],
+    # --- Static data & params ---
+    X_full: np.ndarray,
+    output_path: Path,
+    figsize: Tuple[float, float],
+    dpi: int,
+    x: np.ndarray,
+    y: np.ndarray,
+    x_fine: np.ndarray,
+    y_fine: np.ndarray,
+    xx_fine: np.ndarray,
+    yy_fine: np.ndarray,
+    z_min: float,
+    z_max: float,
+    z_label: str,
+    color_mode: str,
+    cmap_obj: Optional[Any],
+    color_norm: Optional[Normalize],
+    light: LightSource,
+) -> None:
+    """Renders a single frame of the 3D surface with state matrix animation."""
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+    gs = gridspec.GridSpec(1, 2, width_ratios=[1, 1.2])
+    
+    ax_3d = fig.add_subplot(gs[0, 0], projection='3d')
+    ax_mat = fig.add_subplot(gs[0, 1])
+
+    fig.suptitle(f"Time: {frame}")
+
+    # --- Process and plot 3D surface (left panel) ---
+    spline_z_true = RectBivariateSpline(y, x, z_true_frame, kx=3, ky=3)
+    z_fine_true = spline_z_true(y_fine, x_fine)
+    illumination_true = light.hillshade(z_fine_true, vert_exag=0.8)
+    rescaled_illumination_true = 0.5 + 0.5 * illumination_true
+
+    if color_mode == "hsv":
+        u_true_frame, v_true_frame = q_true_frame[0], q_true_frame[1]
+        spline_u_true = RectBivariateSpline(y, x, u_true_frame, kx=3, ky=3)
+        spline_v_true = RectBivariateSpline(y, x, v_true_frame, kx=3, ky=3)
+        u_fine_true, v_fine_true = spline_u_true(y_fine, x_fine), spline_v_true(y_fine, x_fine)
+        color_fine_true = np.arctan2(v_fine_true, u_fine_true)
+        hue_true = (color_fine_true + np.pi) / (2 * np.pi)
+        saturation_true = np.ones_like(hue_true)
+        hsv_vertex_true = np.stack([hue_true, saturation_true, rescaled_illumination_true], axis=-1)
+        rgb_vertex_true = hsv_to_rgb(hsv_vertex_true)
+    elif color_mode == "colormap" and color_data_true_frame is not None:
+        spline_color_true = RectBivariateSpline(y, x, color_data_true_frame, kx=3, ky=3)
+        color_fine_true = spline_color_true(y_fine, x_fine)
+        colors_from_map = cmap_obj(color_norm(color_fine_true))[:, :, :3]
+        rgb_vertex_true = colors_from_map * rescaled_illumination_true[..., np.newaxis]
+    else:
+        rgb_vertex_true = light.shade(z_fine_true, cmap=plt.get_cmap('gray'))
+
+    rgb_face_true = (rgb_vertex_true[:-1, :-1, :] + rgb_vertex_true[1:, :-1, :] + rgb_vertex_true[:-1, 1:, :] + rgb_vertex_true[1:, 1:, :]) / 4.0
+    ax_3d.set_title("True Field")
+    ax_3d.set_zlim(z_min, z_max)
+    ax_3d.set_xlabel("x"); ax_3d.set_ylabel("y"); ax_3d.set_zlabel(z_label)
+    ax_3d.plot_surface(xx_fine, yy_fine, z_fine_true, facecolors=rgb_face_true, rstride=1, cstride=1, antialiased=True, shade=False)
+
+    # --- Plot state matrix and time indicator (right panel) ---
+    D, T = X_full.shape
+    vmax = np.max(np.abs(X_full))
+    ax_mat.imshow(X_full, cmap='plasma', interpolation='nearest', aspect='auto', vmin=-vmax if vmax > 0 else -1, vmax=vmax if vmax > 0 else 1)
+    ax_mat.axvline(x=frame, color='lime', linestyle='-', linewidth=2.5)
+    ax_mat.set_title(f'Full True State Matrix\n({D}x{T})')
+    ax_mat.set_xlabel("Time Step")
+    ax_mat.set_ylabel("State Vector Dimension")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(output_path)
+    plt.close(fig)
+
+
 def _reconstruct_fields_from_modes(
     U: np.ndarray,
     A: np.ndarray,
@@ -2339,6 +2473,7 @@ def generate_all_plots_and_movies(
     rundir: Path,
     layout: SnapshotLayout,
     pod: PODResult,
+    X: np.ndarray,
     sindy: SINDyFitResult,
     rollout: RolloutResult,
     equation: str,
@@ -2358,6 +2493,8 @@ def generate_all_plots_and_movies(
         Name of the equation.
     layout : SnapshotLayout
         Snapshot layout for reshaping basis modes.
+    X : np.ndarray
+        The original (potentially centered) snapshot matrix.
     pod : PODResult
         POD results.
     sindy : SINDyFitResult
@@ -2387,6 +2524,14 @@ def generate_all_plots_and_movies(
     
     if getattr(cfg, "pod_decomposition_matrix_square_pixels", False):
         plot_pod_decomposition_matrix_square_pixels(pod=pod, out_dir=fig_dir, dpi=cfg.dpi)
+
+    if getattr(cfg, "plot_true_state_matrix", False):
+        # If data was centered for POD, X is the centered matrix.
+        # We add the mean back to plot the full, uncentered data.
+        X_to_plot = X.copy()
+        if is_centered and mean_state is not None:
+            X_to_plot += mean_state[:, None]
+        plot_true_state_matrix(X=X_to_plot, out_dir=fig_dir, dpi=cfg.dpi)
 
     plot_pod_basis_fields(
         U=pod.U,
@@ -2525,6 +2670,29 @@ def generate_all_plots_and_movies(
             is_centered=is_centered,
         )
 
+    if getattr(cfg, "movie_3d_surface_with_state_matrix", False):
+        print("Generating 3D surface with state matrix movie...")
+        
+        q_true = rollout.fields_true
+        T_rollout, _, _, _ = q_true.shape
+        
+        # Construct the state matrix for the true rollout data
+        X_true_rollout = np.empty((layout.n_state, T_rollout), dtype=q_true.dtype)
+        for t in range(T_rollout):
+            X_true_rollout[:, t] = fields_to_state_vec(q_true[t], layout)
+
+        interp_factor = getattr(cfg, "movie_3d_interp_factor", 3)
+        animate_3d_surface_with_state_matrix(
+            q_true=q_true,
+            X_full=X_true_rollout,
+            equation=equation,
+            output_path=mov_dir / "rollout_3d_surface_with_state_matrix.mp4",
+            fps=cfg.movie_fps,
+            dpi=cfg.dpi,
+            interp_factor=interp_factor,
+            plot_cfg=cfg,
+        )
+
     if getattr(cfg, "movie_chronos_comparison", False):
         print("Generating chronos comparison movie...")
         animate_chronos_comparison(
@@ -2560,89 +2728,74 @@ def generate_all_plots_and_movies(
                 plot_cfg=cfg,
             )
 
-        # --- Predicted Mode Contributions ---
-        print(f"Generating 3D surface movies for individual predicted mode contributions (r={r})...")
-        for i in range(r):
-            q_recon = _reconstruct_fields_from_modes(
-                U=pod.U,
-                A=rollout.A_pred, # Use predicted coefficients
-                layout=layout,
-                mode_indices=[i],
-                add_mean=False,
-            )
-            output_path = contrib_dir / f"pred_mode_{i:02d}_contribution.mp4"
-            animate_3d_surface(
-                q_left=q_recon,
-                equation=equation,
-                output_path=output_path,
-                title_left=f"Predicted Mode {i} Contribution",
-                fps=cfg.movie_fps,
-                dpi=cfg.dpi,
-                interp_factor=interp_factor,
-                plot_cfg=cfg,
-            )
+def animate_3d_surface_with_state_matrix(
+    q_true: np.ndarray,
+    X_full: np.ndarray,
+    equation: str,
+    output_path: Path,
+    fps: int = 15,
+    dpi: int = 100,
+    interp_factor: int = 3,
+    plot_cfg: Optional[PlotConfig] = None,
+) -> None:
+    """
+    Animate a 3D surface plot of the true field alongside its state matrix.
 
-        print(f"Generating 3D surface movies for cumulative highest predicted mode contributions (r={r})...")
-        for k in range(2, r + 1):
-            mode_indices = list(range(r - k, r))
-            q_recon = _reconstruct_fields_from_modes(
-                U=pod.U,
-                A=rollout.A_pred, # Use predicted coefficients
-                layout=layout,
-                mode_indices=mode_indices,
-                add_mean=False,
-            )
-            output_path = contrib_dir / f"pred_highest_{k:02d}_modes_contribution.mp4"
-            animate_3d_surface(
-                q_left=q_recon,
-                equation=equation,
-                output_path=output_path,
-                title_left=f"Predicted Highest {k} Modes Contribution",
-                fps=cfg.movie_fps,
-                dpi=cfg.dpi,
-                interp_factor=interp_factor,
-                plot_cfg=cfg,
-            )
+    Left panel shows the evolving 3D field. Right panel shows the full
+    state matrix with a vertical line indicating the current time step.
+    """
+    T, C, ny, nx = q_true.shape
+    
+    use_parallel = plot_cfg and getattr(plot_cfg, "movie_3d_parallel", False)
 
-        print(f"Generating 3D surface movies for individual true mode contributions (r={r})...")
-        for i in range(r):
-            q_recon = _reconstruct_fields_from_modes(
-                U=pod.U,
-                A=rollout.A_true,
-                layout=layout,
-                mode_indices=[i],
-                add_mean=False,  # Show mode contribution only, not relative to mean
-            )
-            output_path = contrib_dir / f"true_mode_{i:02d}_contribution.mp4"
-            animate_3d_surface(
-                q_left=q_recon,
-                equation=equation,
-                output_path=output_path,
-                title_left=f"True Mode {i} Contribution",
-                fps=cfg.movie_fps,
-                dpi=cfg.dpi,
-                interp_factor=interp_factor,
-                plot_cfg=cfg,
-            )
+    if not use_parallel:
+        print(
+            "Skipping 3D surface with state matrix movie. "
+            "Enable `movie_3d_parallel` and ensure ffmpeg is installed."
+        )
+        return
 
-        print(f"Generating 3D surface movies for cumulative highest true mode contributions (r={r})...")
-        for k in range(2, r + 1):
-            mode_indices = list(range(r - k, r))
-            q_recon = _reconstruct_fields_from_modes(
-                U=pod.U,
-                A=rollout.A_true,
-                layout=layout,
-                mode_indices=mode_indices,
-                add_mean=False, # Show mode contribution only
-            )
-            output_path = contrib_dir / f"true_highest_{k:02d}_modes_contribution.mp4"
-            animate_3d_surface(
-                q_left=q_recon,
-                equation=equation,
-                output_path=output_path,
-                title_left=f"True Highest {k} Modes Contribution",
-                fps=cfg.movie_fps,
-                dpi=cfg.dpi,
-                interp_factor=interp_factor,
-                plot_cfg=cfg,
-            )
+    # --- Data preparation (similar to animate_3d_surface) ---
+    z_true, color_data_true, z_label, color_mode, cmap = _get_z_and_color_data(q_true, equation)
+
+    # --- Interpolation setup ---
+    x, y = np.arange(nx), np.arange(ny)
+    x_fine, y_fine = np.linspace(0, nx - 1, nx * interp_factor), np.linspace(0, ny - 1, ny * interp_factor)
+    xx_fine, yy_fine = np.meshgrid(x_fine, y_fine)
+
+    # --- Plotting setup ---
+    figsize = (16, 7)
+    light = LightSource(azdeg=225, altdeg=45)
+
+    z_min, z_max = z_true.min(), z_true.max()
+    if z_max - z_min < 1e-9: z_max = z_min + 1.0
+
+    color_norm, cmap_obj = None, None
+    if color_mode == "colormap" and color_data_true is not None:
+        color_min, color_max = color_data_true.min(), color_data_true.max()
+        if color_max - color_min < 1e-9: color_max = color_min + 1.0
+        color_norm = Normalize(vmin=color_min, vmax=color_max)
+        cmap_obj = plt.get_cmap(cmap)
+
+    # --- Parallel Rendering ---
+    n_procs = plot_cfg.movie_3d_parallel_procs or multiprocessing.cpu_count() // 2 or 1
+    print(f"Generating {T} frames for 3D movie with state matrix in parallel using {n_procs} processes...")
+    mp_context = multiprocessing.get_context("spawn")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        frame_dir = Path(temp_dir)
+        tasks = [
+            (frame, q_true[frame], z_true[frame], color_data_true[frame] if color_data_true is not None else None, X_full, frame_dir / f"frame_{frame:05d}.png", figsize, dpi, x, y, x_fine, y_fine, xx_fine, yy_fine, z_min, z_max, z_label, color_mode, cmap_obj, color_norm, light) for frame in range(T)
+        ]
+
+        with mp_context.Pool(processes=n_procs) as pool, tqdm(total=T, desc="Rendering frames") as pbar:
+            for _ in pool.imap_unordered(_render_3d_surface_with_state_matrix_frame_wrapper, tasks):
+                pbar.update(1)
+
+        print("Stitching frames into movie with ffmpeg...")
+        ffmpeg_cmd = ["ffmpeg", "-y", "-framerate", str(fps), "-i", str(frame_dir / "frame_%05d.png"), "-c:v", "libx264", "-profile:v", "main", "-vf", "scale=min(1920\\,iw):-2", "-pix_fmt", "yuv420p", "-crf", "17", "-preset", "fast", str(output_path)]
+        try:
+            subprocess.run(ffmpeg_cmd, check=True, capture_output=True, text=True, encoding="utf-8")
+            print(f"Saved 3D surface with state matrix animation to {output_path}")
+        except (FileNotFoundError, subprocess.CalledProcessError) as e:
+            print(f"ERROR: ffmpeg failed. Is it installed? Details:\n{e}")

@@ -182,6 +182,7 @@ class PlotConfig:
     # POD decomposition matrix
     pod_decomposition_matrix: bool = True
     pod_decomposition_matrix_square_pixels: bool = True
+    plot_true_state_matrix: bool = True
 
     # Rollout visualization
     rollout_cmap: str = "viridis"
@@ -199,6 +200,7 @@ class PlotConfig:
     movie_3d_decomposition_show_titles: bool = True
     movie_3d_reconstruction_comparison: bool = False
     movie_chronos_comparison: bool = False
+    movie_3d_surface_with_state_matrix: bool = False
 
     # field error plots
     metrics_curves: bool = True
