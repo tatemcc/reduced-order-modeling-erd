@@ -2417,6 +2417,147 @@ def _render_3d_surface_with_state_matrix_frame(
     plt.close(fig)
 
 
+def _render_3d_surface_clean_frame_wrapper(args: tuple) -> None:
+    """Helper to unpack arguments for multiprocessing.Pool.map."""
+    return _render_3d_surface_clean_frame(*args)
+
+
+def _render_3d_surface_clean_frame(
+    frame: int,
+    # --- Data for this frame ---
+    q_frame: np.ndarray,
+    z_frame: np.ndarray,
+    color_data_frame: Optional[np.ndarray],
+    # --- Static data & params ---
+    output_path: Path,
+    figsize: Tuple[float, float],
+    dpi: int,
+    x: np.ndarray,
+    y: np.ndarray,
+    x_fine: np.ndarray,
+    y_fine: np.ndarray,
+    xx_fine: np.ndarray,
+    yy_fine: np.ndarray,
+    z_min: float,
+    z_max: float,
+    color_mode: str,
+    cmap_obj: Optional[Any],
+    color_norm: Optional[Normalize],
+    light: LightSource,
+) -> None:
+    """Renders a single frame of the clean 3D surface animation and saves it to a file."""
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+    ax = fig.add_subplot(1, 1, 1, projection='3d')
+
+    # --- Process and plot data ---
+    spline_z = RectBivariateSpline(y, x, z_frame, kx=3, ky=3)
+    z_fine = spline_z(y_fine, x_fine)
+    illumination = light.hillshade(z_fine, vert_exag=0.8)
+    rescaled_illumination = 0.5 + 0.5 * illumination
+
+    if color_mode == "hsv":
+        u_frame, v_frame = q_frame[0], q_frame[1]
+        spline_u = RectBivariateSpline(y, x, u_frame, kx=3, ky=3)
+        spline_v = RectBivariateSpline(y, x, v_frame, kx=3, ky=3)
+        u_fine = spline_u(y_fine, x_fine)
+        v_fine = spline_v(y_fine, x_fine)
+        color_fine = np.arctan2(v_fine, u_fine)
+        hue = (color_fine + np.pi) / (2 * np.pi)
+        saturation = np.ones_like(hue)
+        hsv_vertex = np.stack([hue, saturation, rescaled_illumination], axis=-1)
+        rgb_vertex = hsv_to_rgb(hsv_vertex)
+    elif color_mode == "colormap" and color_data_frame is not None:
+        spline_color = RectBivariateSpline(y, x, color_data_frame, kx=3, ky=3)
+        color_fine = spline_color(y_fine, x_fine)
+        colors_from_map = cmap_obj(color_norm(color_fine))[:, :, :3]
+        rgb_vertex = colors_from_map * rescaled_illumination[..., np.newaxis]
+    else:
+        rgb_vertex = light.shade(z_fine, cmap=plt.get_cmap('gray'))
+
+    rgb_face = (rgb_vertex[:-1, :-1, :] + rgb_vertex[1:, :-1, :] + rgb_vertex[:-1, 1:, :] + rgb_vertex[1:, 1:, :]) / 4.0
+    
+    ax.set_zlim(z_min, z_max)
+    ax.plot_surface(xx_fine, yy_fine, z_fine, facecolors=rgb_face, rstride=1, cstride=1, antialiased=True, shade=False)
+
+    # --- Clean up plot ---
+    ax.axis('off')
+    # Remove padding around the plot
+    fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
+
+    fig.savefig(output_path, bbox_inches='tight', pad_inches=0)
+    plt.close(fig)
+
+
+def animate_3d_surface_clean(
+    q: np.ndarray,
+    equation: str,
+    output_path: Path,
+    fps: int = 15,
+    dpi: int = 100,
+    interp_factor: int = 3,
+    plot_cfg: Optional[PlotConfig] = None,
+) -> None:
+    """
+    Animate a 'clean' 3D surface plot of a field, with no axes, titles, or grid.
+
+    This is a variant of `animate_3d_surface` that produces a minimalist visualization
+    of the evolving surface, suitable for presentations or embedding.
+    """
+    T, C, ny, nx = q.shape
+
+    use_parallel = plot_cfg and getattr(plot_cfg, "movie_3d_parallel", False)
+
+    if not use_parallel:
+        print(
+            "Skipping clean 3D surface movie. "
+            "Enable `movie_3d_parallel` and ensure ffmpeg is installed."
+        )
+        return
+
+    # --- Data preparation based on equation ---
+    z, color_data, z_label, color_mode, cmap = _get_z_and_color_data(q, equation)
+
+    # --- Interpolation setup ---
+    x, y = np.arange(nx), np.arange(ny)
+    x_fine, y_fine = np.linspace(0, nx - 1, nx * interp_factor), np.linspace(0, ny - 1, ny * interp_factor)
+    xx_fine, yy_fine = np.meshgrid(x_fine, y_fine)
+
+    # --- Plotting setup ---
+    figsize = (8, 7)
+    light = LightSource(azdeg=225, altdeg=45)
+
+    z_min, z_max = z.min(), z.max()
+    if z_max - z_min < 1e-9: z_max = z_min + 1.0
+
+    color_norm, cmap_obj = None, None
+    if color_mode == "colormap" and color_data is not None:
+        color_min, color_max = color_data.min(), color_data.max()
+        if color_max - color_min < 1e-9: color_max = color_min + 1.0
+        color_norm = Normalize(vmin=color_min, vmax=color_max)
+        cmap_obj = plt.get_cmap(cmap)
+
+    # --- Parallel Rendering ---
+    n_procs = plot_cfg.movie_3d_parallel_procs or multiprocessing.cpu_count() // 2 or 1
+    print(f"Generating {T} frames for clean 3D movie in parallel using {n_procs} processes...")
+    mp_context = multiprocessing.get_context("spawn")
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        frame_dir = Path(temp_dir)
+        tasks = [(frame, q[frame], z[frame], color_data[frame] if color_data is not None else None, frame_dir / f"frame_{frame:05d}.png", figsize, dpi, x, y, x_fine, y_fine, xx_fine, yy_fine, z_min, z_max, color_mode, cmap_obj, color_norm, light) for frame in range(T)]
+
+        with mp_context.Pool(processes=n_procs) as pool, tqdm(total=T, desc="Rendering clean 3D frames") as pbar:
+            for _ in pool.imap_unordered(_render_3d_surface_clean_frame_wrapper, tasks):
+                pbar.update(1)
+
+        print("Stitching frames into movie with ffmpeg...")
+        ffmpeg_cmd = ["ffmpeg", "-y", "-framerate", str(fps), "-i", str(frame_dir / "frame_%05d.png"), "-c:v", "libx264", "-profile:v", "main", "-vf", "scale=min(1920\\,iw):-2", "-pix_fmt", "yuv420p", "-crf", "17", "-preset", "fast", str(output_path)]
+        try:
+            subprocess.run(ffmpeg_cmd, check=True, capture_output=True, text=True, encoding="utf-8")
+            print(f"Saved clean 3D surface animation to {output_path}")
+        except (FileNotFoundError, subprocess.CalledProcessError) as e:
+            print(f"ERROR: ffmpeg failed. Is it installed? Details:\n{e}")
+
+
 def _reconstruct_fields_from_modes(
     U: np.ndarray,
     A: np.ndarray,
@@ -2687,6 +2828,19 @@ def generate_all_plots_and_movies(
             X_full=X_true_rollout,
             equation=equation,
             output_path=mov_dir / "rollout_3d_surface_with_state_matrix.mp4",
+            fps=cfg.movie_fps,
+            dpi=cfg.dpi,
+            interp_factor=interp_factor,
+            plot_cfg=cfg,
+        )
+
+    if getattr(cfg, "movie_3d_surface_clean", False):
+        print("Generating clean 3D surface movie for true field...")
+        interp_factor = getattr(cfg, "movie_3d_interp_factor", 3)
+        animate_3d_surface_clean(
+            q=rollout.fields_true,
+            equation=equation,
+            output_path=mov_dir / "rollout_3d_surface_clean.mp4",
             fps=cfg.movie_fps,
             dpi=cfg.dpi,
             interp_factor=interp_factor,

@@ -201,6 +201,7 @@ class PlotConfig:
     movie_3d_reconstruction_comparison: bool = False
     movie_chronos_comparison: bool = False
     movie_3d_surface_with_state_matrix: bool = False
+    movie_3d_surface_clean: bool = False
 
     # field error plots
     metrics_curves: bool = True

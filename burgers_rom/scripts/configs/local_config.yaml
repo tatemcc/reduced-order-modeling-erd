@@ -4,7 +4,7 @@ seed: 0
 data:
   equation: burgers
   structure: grid
-  resolution: low
+  resolution: high
   split: train
   n_trajectories: 1
   trajectory_ids: [1]
@@ -49,7 +49,7 @@ sindy:
   optimizer: trappingsr3
   optimizer_params:
     eta: 100
-    threshold: 0.0500432345
+    threshold: 0.0500441412
     alpha: 100
     beta: 100
     max_iter: 80
@@ -70,3 +70,4 @@ plots:
   movie_chronos_comparison: false
   movie_3d_surface_with_state_matrix: true
   dynabench_comparison_timesteps: 30
+  movie_3d_surface_clean: true
