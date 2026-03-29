@@ -4,7 +4,7 @@ seed: 0
 data:
   equation: burgers
   structure: grid
-  resolution: high
+  resolution: low
   split: train
   n_trajectories: 1
   trajectory_ids: [1]
@@ -16,7 +16,7 @@ data:
   time_stride: 1
   time_limit: null
 pod:
-  rank: 8
+  rank: 16
   energy_fraction: null
   center: true
 deriv:
@@ -56,18 +56,20 @@ sindy:
     gamma: -0.1
     normalize_columns: true
   constrain_energy: false
+  parallel: true
+  parallel_procs: 7
 outputs_dir: outputs
 plots:
   enabled: true
-  movie_3d_surface: false
+  movie_3d_surface: true
   movie_3d_interp_factor: 3
-  movie_3d_mode_contributions: false
+  movie_3d_mode_contributions: true
   movie_3d_parallel: true
   movie_3d_parallel_procs: 12
-  movie_3d_decomposition: false
+  movie_3d_decomposition: true
   movie_3d_decomposition_show_titles: false
-  movie_3d_reconstruction_comparison: false
-  movie_chronos_comparison: false
+  movie_3d_reconstruction_comparison: true
+  movie_chronos_comparison: true
   movie_3d_surface_with_state_matrix: true
   dynabench_comparison_timesteps: 30
   movie_3d_surface_clean: true

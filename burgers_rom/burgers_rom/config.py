@@ -152,6 +152,10 @@ class SINDyConfig:
         Dictionary of optimizer-specific parameters.
     constrain_energy : bool
         Whether to enforce energy-preserving constraints.
+    parallel : bool
+        Whether to use parallel processing for fitting SINDy.
+    parallel_procs : int, optional
+        Number of processes for parallel fitting. If None, uses all cores.
     """
 
     poly_order: int = 2
@@ -161,6 +165,9 @@ class SINDyConfig:
     optimizer_params: Dict[str, Any] = field(default_factory=lambda: {"threshold": 0.1, "nu": 1.0})
 
     constrain_energy: bool = False  # NOTE UNIMPLEMENTED
+
+    parallel: bool = False
+    parallel_procs: Optional[int] = None
 
 
 @dataclass(frozen=True)

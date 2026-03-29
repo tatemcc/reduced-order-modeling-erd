@@ -160,6 +160,8 @@ def run(
         include_bias=cfg.sindy.include_bias,
         optimizer_name=cfg.sindy.optimizer,
         optimizer_params=cfg.sindy.optimizer_params,
+        parallel=cfg.sindy.parallel,
+        parallel_procs=cfg.sindy.parallel_procs,
         feature_names=None,
     )
 

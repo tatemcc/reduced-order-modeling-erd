@@ -71,7 +71,11 @@ def build_library(
 
 
 def build_optimizer(
-    optimizer_name: str, params: Dict[str, Any], n_targets: int
+    optimizer_name: str,
+    params: Dict[str, Any],
+    n_targets: int,
+    parallel: bool = False,
+    parallel_procs: Optional[int] = None,
 ) -> ps.BaseOptimizer:
     """
     Construct a PySINDy optimizer.
@@ -84,6 +88,10 @@ def build_optimizer(
         Optimizer parameters.
     n_target : int
         Number of targets for TrappingSR3.
+    parallel : bool, optional
+        If True, use parallel processing for the fit.
+    parallel_procs : int, optional
+        Number of processes for parallel fitting. If None, uses all cores.
 
     Returns
     -------
@@ -92,6 +100,13 @@ def build_optimizer(
     """
     normalize_columns = params.get("normalize_columns", True)
     max_iter = params.get("max_iter", 20)
+
+    n_jobs = 1
+    if parallel:
+        if parallel_procs is None:
+            n_jobs = -1  # Use all available cores
+        else:
+            n_jobs = parallel_procs
 
     optimizer_params = {} if params is None else params
     if optimizer_name == "stlsq":
@@ -102,6 +117,7 @@ def build_optimizer(
             alpha=alpha,
             max_iter=max_iter,
             normalize_columns=normalize_columns,
+            n_jobs=n_jobs,
         )
     elif optimizer_name == "sr3":
         threshold = params.get("threshold", 0.1)
@@ -113,10 +129,17 @@ def build_optimizer(
             regularizer="L0",
             max_iter=max_iter_sr3,
             normalize_columns=normalize_columns,
+            n_jobs=n_jobs,
         )
         optimizer.threshold = threshold
         return optimizer
     elif optimizer_name == "ssr":
+        if parallel:
+            print(
+                f"Warning: The '{optimizer_name}' optimizer in PySINDy does not support "
+                "multi-core parallelization (n_jobs). "
+                "Fitting sequentially."
+            )
         alpha = params.get("alpha", 0.05)
         return ps.SSR(
             alpha=alpha,
@@ -124,6 +147,12 @@ def build_optimizer(
             normalize_columns=normalize_columns,
         )
     elif optimizer_name == "frols":
+        if parallel:
+            print(
+                f"Warning: The '{optimizer_name}' optimizer in PySINDy does not support "
+                "multi-core parallelization (n_jobs). "
+                "Fitting sequentially."
+            )
         kappa = params.get("kappa", None)
         return ps.FROLS(
             kappa=kappa,
@@ -131,6 +160,12 @@ def build_optimizer(
         )
     # TODO: choose better default values
     elif optimizer_name == "trappingsr3":
+        if parallel:
+            print(
+                f"Warning: The '{optimizer_name}' optimizer in PySINDy does not support "
+                "multi-core parallelization (n_jobs) due to its coupled optimization approach. "
+                "Fitting sequentially."
+            )
         return ps.TrappingSR3(
             _n_tgts=n_targets,
             reg_weight_lam=params.get("threshold", 0.1),  # Mapping threshold to lambda
@@ -158,6 +193,8 @@ def fit_sindy_on_coeffs(
     include_bias: bool,
     optimizer_name: str,
     optimizer_params: Dict[str, Any],
+    parallel: bool = False,
+    parallel_procs: Optional[int] = None,
     feature_names: Optional[List[str]] = None,
 ) -> SINDyFitResult:
     """
@@ -179,6 +216,10 @@ def fit_sindy_on_coeffs(
         Optimizer name: 'stlsq', 'sr3', 'ssr', or 'frols'.
     optimizer_params : dict
         Parameters for the optimizer.
+    parallel : bool, optional
+        If True, use parallel processing for the fit.
+    parallel_procs : int, optional
+        Number of processes for parallel fitting. If None, uses all cores.
     feature_names : list of str, optional
         Custom feature names for state variables. If None, defaults are used.
 
@@ -203,7 +244,13 @@ def fit_sindy_on_coeffs(
     Xdot = dA_dt.T
 
     lib = build_library(poly_order=poly_order, include_bias=include_bias)
-    opt = build_optimizer(optimizer_name=optimizer_name, params=optimizer_params, n_targets=r)
+    opt = build_optimizer(
+        optimizer_name=optimizer_name,
+        params=optimizer_params,
+        n_targets=r,
+        parallel=parallel,
+        parallel_procs=parallel_procs,
+    )
 
     if feature_names is None:
         feature_names = [f"a{i}" for i in range(r)]
@@ -213,6 +260,7 @@ def fit_sindy_on_coeffs(
         optimizer=opt,
         differentiation_method=None,  # we did the derivatives ourselves
     )
+
     model.fit(X, t=dt, x_dot=Xdot)
 
     Xi = model.coefficients()
