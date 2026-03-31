@@ -2935,9 +2935,6 @@ def generate_all_plots_and_movies(
 
         # Loop from k=2 to r to generate movies for sum of top k modes
         for k in range(2, r + 1):
-            if rollout.A_pred is None:
-                break # Only makes sense to compare if there is a prediction
-
             print(f"Generating 3D surface movie for cumulative sum of top {k} modes...")
 
             mode_indices = list(range(k))
@@ -2951,23 +2948,30 @@ def generate_all_plots_and_movies(
                 add_mean=False,
             )
 
-            # Reconstruct using predicted chronos
-            cumulative_pred = _reconstruct_fields_from_modes(
-                U=pod.U,
-                A=rollout.A_pred,
-                layout=layout,
-                mode_indices=mode_indices,
-                add_mean=False,
-            )
+            cumulative_pred = None
+            title_left = f"Sum of Top {k} Modes (True Chronos)"
+            title_right = ""
+            output_path = cumulative_contrib_dir / f"cumulative_sum_top_{k:02d}_modes_true.mp4"
 
-            output_path = cumulative_contrib_dir / f"cumulative_sum_top_{k:02d}_modes.mp4"
+            if rollout.A_pred is not None:
+                # Reconstruct using predicted chronos
+                cumulative_pred = _reconstruct_fields_from_modes(
+                    U=pod.U,
+                    A=rollout.A_pred,
+                    layout=layout,
+                    mode_indices=mode_indices,
+                    add_mean=False,
+                )
+                title_right = f"Sum of Top {k} Modes (Pred Chronos)"
+                output_path = cumulative_contrib_dir / f"cumulative_sum_top_{k:02d}_modes.mp4"
+
             animate_3d_surface(
                 q_left=cumulative_true,
                 q_right=cumulative_pred,
                 equation=equation,
                 output_path=output_path,
-                title_left=f"Sum of Top {k} Modes (True Chronos)",
-                title_right=f"Sum of Top {k} Modes (Pred Chronos)",
+                title_left=title_left,
+                title_right=title_right,
                 fps=cfg.movie_fps,
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
