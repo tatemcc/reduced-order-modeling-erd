@@ -186,7 +186,7 @@ class PlotConfig:
     dpi: int = 150
 
     # Basis visualization
-    basis_n_modes: int = 8
+    basis_n_modes: int = 65536
     basis_cmap: str = "viridis"
 
     # POD decomposition matrix
