@@ -16,7 +16,7 @@ data:
   time_stride: 1
   time_limit: null
 pod:
-  rank: 48
+  rank: 2
   energy_fraction: null
   center: true
 deriv:
@@ -65,7 +65,7 @@ plots:
   movie_3d_interp_factor: 3
   movie_3d_mode_contributions: true
   movie_3d_parallel: true
-  movie_3d_parallel_procs: 12
+  movie_3d_parallel_procs: 14
   movie_3d_decomposition: true
   movie_3d_decomposition_show_titles: false
   movie_3d_reconstruction_comparison: true

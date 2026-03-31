@@ -2867,8 +2867,8 @@ def generate_all_plots_and_movies(
         contrib_dir.mkdir(exist_ok=True)
         interp_factor = getattr(cfg, "movie_3d_interp_factor", 3)
 
-        # Movie of just the mean state
-        if mean_state is not None:
+        # Movie of the mean state (if centering was applied)
+        if mean_state is not None and is_centered:
             print("Generating 3D surface movie for true mean state...")
             # Repeat mean state T times to create a "movie"
             T = rollout.A_true.shape[0]
@@ -2880,6 +2880,80 @@ def generate_all_plots_and_movies(
                 equation=equation,
                 output_path=output_path,
                 title_left="True Mean State",
+                fps=cfg.movie_fps,
+                dpi=cfg.dpi,
+                interp_factor=interp_factor,
+                plot_cfg=cfg,
+            )
+
+        # Movies for individual mode contributions (True vs Predicted Chronos)
+        n_modes_to_plot = min(cfg.basis_n_modes, r)
+        for i in range(n_modes_to_plot):
+            print(f"Generating 3D surface movie for mode {i} contribution (True vs Predicted Chronos)...")
+
+            # Get the i-th basis vector (topos) and reshape to a field
+            topos_field_i = state_vec_to_fields(pod.U[:, i], layout)
+
+            # Get the time series of the i-th true and predicted coefficients (chronos)
+            chronos_true_i = rollout.A_true[:, i]
+            chronos_pred_i = rollout.A_pred[:, i]
+
+            # Calculate the contribution field over time for true chronos
+            contribution_movie_true_i = chronos_true_i[:, np.newaxis, np.newaxis, np.newaxis] * topos_field_i[np.newaxis, ...]
+
+            # Calculate the contribution field over time for predicted chronos
+            contribution_movie_pred_i = chronos_pred_i[:, np.newaxis, np.newaxis, np.newaxis] * topos_field_i[np.newaxis, ...]
+
+            output_path = contrib_dir / f"mode_{i:02d}_contribution_true_vs_pred.mp4"
+            animate_3d_surface(
+                q_left=contribution_movie_true_i,
+                q_right=contribution_movie_pred_i,
+                equation=equation,
+                output_path=output_path,
+                title_left=f"Mode {i} Contribution (True Chronos)",
+                title_right=f"Mode {i} Contribution (Pred Chronos)",
+                fps=cfg.movie_fps,
+                dpi=cfg.dpi,
+                interp_factor=interp_factor,
+                plot_cfg=cfg,
+            )
+
+        # Movies for cumulative mode contributions
+        cumulative_contrib_dir = contrib_dir / "cumulative"
+        cumulative_contrib_dir.mkdir(exist_ok=True)
+
+        # Loop from k=2 to r to generate movies for sum of top k modes
+        for k in range(2, r + 1):
+            print(f"Generating 3D surface movie for cumulative sum of top {k} modes...")
+
+            mode_indices = list(range(k))
+
+            # Reconstruct using true chronos
+            cumulative_true = _reconstruct_fields_from_modes(
+                U=pod.U,
+                A=rollout.A_true,
+                layout=layout,
+                mode_indices=mode_indices,
+                add_mean=False,
+            )
+
+            # Reconstruct using predicted chronos
+            cumulative_pred = _reconstruct_fields_from_modes(
+                U=pod.U,
+                A=rollout.A_pred,
+                layout=layout,
+                mode_indices=mode_indices,
+                add_mean=False,
+            )
+
+            output_path = cumulative_contrib_dir / f"cumulative_sum_top_{k:02d}_modes.mp4"
+            animate_3d_surface(
+                q_left=cumulative_true,
+                q_right=cumulative_pred,
+                equation=equation,
+                output_path=output_path,
+                title_left=f"Sum of Top {k} Modes (True Chronos)",
+                title_right=f"Sum of Top {k} Modes (Pred Chronos)",
                 fps=cfg.movie_fps,
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
