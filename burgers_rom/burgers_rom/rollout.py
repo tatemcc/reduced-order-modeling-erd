@@ -27,25 +27,25 @@ class RolloutResult:
     Attributes
     ----------
     A_true : np.ndarray
-        Ground truth coefficients of shape (T, r).
-    A_pred : np.ndarray
-        Predicted coefficients of shape (T, r).
+        Ground truth coefficients of shape (T, r). Always present.
     q_true : np.ndarray
-        Ground truth stacked states of shape (T, n_state).
-    q_pred : np.ndarray
-        Predicted stacked states of shape (T, n_state).
+        Ground truth stacked states of shape (T, n_state). Always present.
     fields_true : np.ndarray
-        Ground truth fields of shape (T, C, ny, nx).
+        Ground truth fields of shape (T, C, ny, nx). Always present.
+    A_pred : np.ndarray, optional
+        Predicted coefficients of shape (T, r). None if SINDy is disabled.
+    q_pred : np.ndarray, optional
+        Predicted stacked states of shape (T, n_state). None if SINDy is disabled.
     fields_pred : np.ndarray
-        Predicted fields of shape (T, C, ny, nx).
+        Predicted fields of shape (T, C, ny, nx). None if SINDy is disabled.
     """
 
     A_true: np.ndarray
-    A_pred: np.ndarray
     q_true: np.ndarray
-    q_pred: np.ndarray
     fields_true: np.ndarray
-    fields_pred: np.ndarray
+    A_pred: Optional[np.ndarray] = None
+    q_pred: Optional[np.ndarray] = None
+    fields_pred: Optional[np.ndarray] = None
 
 
 def _coeff_segment(
@@ -145,10 +145,10 @@ def rollout_one(
 
     return RolloutResult(
         A_true=A_true,
-        A_pred=A_pred,
         q_true=q_true_mat,
-        q_pred=q_pred_mat,
         fields_true=fields_true,
+        A_pred=A_pred,
+        q_pred=q_pred_mat,
         fields_pred=fields_pred,
     )
 

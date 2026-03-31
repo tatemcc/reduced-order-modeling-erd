@@ -142,6 +142,8 @@ class SINDyConfig:
 
     Attributes
     ----------
+    enabled : bool
+        Whether to run the SINDy fitting and rollout stage.
     poly_order : int
         Polynomial library order.
     include_bias : bool
@@ -158,6 +160,7 @@ class SINDyConfig:
         Number of processes for parallel fitting. If None, uses all cores.
     """
 
+    enabled: bool = True
     poly_order: int = 2
     include_bias: bool = False
 

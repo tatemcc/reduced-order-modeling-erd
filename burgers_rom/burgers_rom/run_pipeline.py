@@ -7,9 +7,10 @@ This module provides:
 """
 
 from __future__ import annotations
+import numpy as np
 
 from dataclasses import dataclass
-from typing import Dict, Sequence
+from typing import Dict, Optional, Sequence
 
 
 from .artifacts import save_config_yaml, save_json, save_npy
@@ -17,8 +18,8 @@ from .config import RunConfig
 from .dynabench_io import build_iterator, infer_grid_spacing, load_trajectories
 from .metrics import compute_curves, summarize_aggregates
 from .paths import config_hash, ensure_run_subdirs, run_dir
-from .pod import PODResult, compute_pod
-from .rollout import RolloutResult, reshape_coeffs_by_trajectory, rollout_one
+from .pod import PODResult, compute_pod, reconstruct_from_pod
+from .rollout import RolloutResult, reshape_coeffs_by_trajectory, rollout_one, _coeff_segment
 from .snapshot import build_snapshot_matrix
 from .sindy_model import SINDyFitResult, fit_sindy_on_coeffs
 from .derivs import finite_difference_coeff_derivative
@@ -49,7 +50,7 @@ class RunResult:
     run_id: str
     rundir: str
     pod: PODResult
-    sindy: SINDyFitResult
+    sindy: Optional[SINDyFitResult]
     rollout: RolloutResult
     aggregates: Dict[str, float]
 
@@ -150,45 +151,63 @@ def run(
         segment_lengths=seg_lengths,
         order=2,
     )
+    
+    sindy: Optional[SINDyFitResult] = None
+    rollout: RolloutResult
+    aggregates: Dict[str, float] = {}
 
-    print("Fitting SINDy model...")
-    sindy = fit_sindy_on_coeffs(
-        A_used=deriv_res.A_used,
-        dA_dt=deriv_res.dA_dt,
-        dt=dt,
-        poly_order=cfg.sindy.poly_order,
-        include_bias=cfg.sindy.include_bias,
-        optimizer_name=cfg.sindy.optimizer,
-        optimizer_params=cfg.sindy.optimizer_params,
-        parallel=cfg.sindy.parallel,
-        parallel_procs=cfg.sindy.parallel_procs,
-        feature_names=None,
-    )
+    if cfg.sindy.enabled:
+        print("Fitting SINDy model...")
+        sindy = fit_sindy_on_coeffs(
+            A_used=deriv_res.A_used,
+            dA_dt=deriv_res.dA_dt,
+            dt=dt,
+            poly_order=cfg.sindy.poly_order,
+            include_bias=cfg.sindy.include_bias,
+            optimizer_name=cfg.sindy.optimizer,
+            optimizer_params=cfg.sindy.optimizer_params,
+            parallel=cfg.sindy.parallel,
+            parallel_procs=cfg.sindy.parallel_procs,
+            feature_names=None,
+        )
 
-    print("Running rollout...")
-    rollout = rollout_one(
-        model=sindy.model,
-        U=pod.U,
-        layout=layout,
-        A_traj=A_by_traj[0],
-        dt=dt,
-        horizon_steps=cfg.data.rollout,
-        mean_state=mean_state,
-        start_idx=0,
-    )
+        print("Running rollout...")
+        rollout = rollout_one(
+            model=sindy.model,
+            U=pod.U,
+            layout=layout,
+            A_traj=A_by_traj[0],
+            dt=dt,
+            horizon_steps=cfg.data.rollout,
+            mean_state=mean_state,
+            start_idx=0,
+        )
 
-    print("Computing metrics...")
-    err, energy = compute_curves(
-        A_true=rollout.A_true,
-        A_pred=rollout.A_pred,
-        fields_true=rollout.fields_true,
-        fields_pred=rollout.fields_pred,
-        dx=dx,
-        dy=dy,
-        equation=cfg.data.equation,
-    )
-    aggregates = summarize_aggregates(err, energy)
+        print("Computing metrics...")
+        err, energy = compute_curves(
+            A_true=rollout.A_true,
+            A_pred=rollout.A_pred,
+            fields_true=rollout.fields_true,
+            fields_pred=rollout.fields_pred,
+            dx=dx,
+            dy=dy,
+            equation=cfg.data.equation,
+        )
+        aggregates = summarize_aggregates(err, energy)
+    else:
+        print("SINDy is disabled. Skipping fitting, rollout, and metrics.")
+        from .snapshot import state_vec_to_fields
 
+        A_true_segment = _coeff_segment(A_by_traj[0], start_idx=0, horizon_steps=cfg.data.rollout)
+        q_true_mat = reconstruct_from_pod(pod.U, A_true_segment.T, mean_state=mean_state).T
+        fields_true = np.stack(
+            [state_vec_to_fields(q_true_mat[i], layout) for i in range(q_true_mat.shape[0])], axis=0
+        )
+        rollout = RolloutResult(
+            A_true=A_true_segment, q_true=q_true_mat, fields_true=fields_true
+        )
+
+    
     cfg_dict = cfg.to_dict()
     run_id = config_hash(cfg_dict)
 
@@ -206,37 +225,41 @@ def run(
             save_npy(subdirs["pod"] / "mean_q.npy", mean_state)
         save_npy(subdirs["pod"] / "coeffs_A.npy", pod.A)
 
-        save_npy(subdirs["sindy"] / "Xi.npy", sindy.coefficient_matrix)
-        save_json(subdirs["sindy"] / "feature_names.json", {"features": sindy.feature_names})
-        save_json(
-            subdirs["sindy"] / "model_meta.json",
-            {
-                "poly_order": cfg.sindy.poly_order,
-                "include_bias": cfg.sindy.include_bias,
-                "optimizer": cfg.sindy.optimizer,
-                "optimizer_params": cfg.sindy.optimizer_params,
-                "n_targets": sindy.n_targets,
-                "n_features": sindy.n_features,
-            },
-        )
+        if sindy is not None:
+            save_npy(subdirs["sindy"] / "Xi.npy", sindy.coefficient_matrix)
+            save_json(subdirs["sindy"] / "feature_names.json", {"features": sindy.feature_names})
+            save_json(
+                subdirs["sindy"] / "model_meta.json",
+                {
+                    "poly_order": cfg.sindy.poly_order,
+                    "include_bias": cfg.sindy.include_bias,
+                    "optimizer": cfg.sindy.optimizer,
+                    "optimizer_params": cfg.sindy.optimizer_params,
+                    "n_targets": sindy.n_targets,
+                    "n_features": sindy.n_features,
+                },
+            )
 
         save_npy(subdirs["rollout"] / "A_true.npy", rollout.A_true)
-        save_npy(subdirs["rollout"] / "A_pred.npy", rollout.A_pred)
+        if rollout.A_pred is not None:
+            save_npy(subdirs["rollout"] / "A_pred.npy", rollout.A_pred)
         save_npy(subdirs["rollout"] / "q_true.npy", rollout.q_true)
-        save_npy(subdirs["rollout"] / "q_pred.npy", rollout.q_pred)
+        if rollout.q_pred is not None:
+            save_npy(subdirs["rollout"] / "q_pred.npy", rollout.q_pred)
 
-        save_json(
-            subdirs["metrics"] / "curves.json",
-            {
-                "dt": dt,
-                "coeff_mse": err.coeff_mse.tolist(),
-                "field_l2": err.field_l2.tolist(),
-                "field_rel_l2": err.field_rel_l2.tolist(),
-                "energy_true": energy.energy_true.tolist(),
-                "energy_pred": energy.energy_pred.tolist(),
-            },
-        )
-        save_json(subdirs["metrics"] / "aggregates.json", aggregates)
+        if cfg.sindy.enabled and sindy is not None:
+            save_json(
+                subdirs["metrics"] / "curves.json",
+                {
+                    "dt": dt,
+                    "coeff_mse": err.coeff_mse.tolist(),
+                    "field_l2": err.field_l2.tolist(),
+                    "field_rel_l2": err.field_rel_l2.tolist(),
+                    "energy_true": energy.energy_true.tolist(),
+                    "energy_pred": energy.energy_pred.tolist(),
+                },
+            )
+            save_json(subdirs["metrics"] / "aggregates.json", aggregates)
 
         generate_all_plots_and_movies(
             cfg=cfg.plots,

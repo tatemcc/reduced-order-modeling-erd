@@ -659,7 +659,7 @@ def plot_sindy_coeff_matrix(
 
 def plot_coeff_time_series(
     A_true: np.ndarray,
-    A_pred: np.ndarray,
+    A_pred: Optional[np.ndarray],
     out_dir: Path,
     dpi: int,
     sympy_labels: bool,
@@ -672,8 +672,6 @@ def plot_coeff_time_series(
     ----------
     A_true : np.ndarray
         True coefficients, shape (T, r).
-    A_pred : np.ndarray
-        Predicted coefficients, shape (T, r).
     out_dir : Path
         Output directory.
     dpi : int
@@ -682,10 +680,12 @@ def plot_coeff_time_series(
         If True, attempt sympy-style labels.
     sympy_style : str
         Label style: 'a_i' or 'x_i'.
+    A_pred : np.ndarray, optional
+        Predicted coefficients, shape (T, r). If None, only true are plotted.
     """
     A_true = np.asarray(A_true)
-    A_pred = np.asarray(A_pred)
     T, r = A_true.shape
+    title = "POD coefficients: true vs predicted" if A_pred is not None else "POD coefficients"
 
     labels = None
     if sympy_labels:
@@ -695,11 +695,12 @@ def plot_coeff_time_series(
     for i in range(r):
         name = labels[i] if labels is not None else f"a{i}"
         # sync the color across true and pred for the same coefficient
-        plt.plot(A_true[:, i], linewidth=1.0, label=f"{name} true", color=f"C{i}")
-        plt.plot(A_pred[:, i], linewidth=1.0, linestyle="--", label=f"{name} pred", color=f"C{i}")
+        plt.plot(A_true[:, i], linewidth=1.0, label=f"{name} true" if A_pred is not None else name, color=f"C{i}")
+        if A_pred is not None:
+            plt.plot(A_pred[:, i], linewidth=1.0, linestyle="--", label=f"{name} pred", color=f"C{i}")
     plt.xlabel("t index")
     plt.ylabel("coefficient value")
-    plt.title("POD coefficients: true vs predicted")
+    plt.title(title)
     if r <= 10:
         plt.legend(ncol=2, fontsize=8)
     _savefig(fig, out_dir / "coeff_time_series_true_vs_pred.png", dpi=dpi)
@@ -2687,7 +2688,8 @@ def generate_all_plots_and_movies(
         dpi=cfg.dpi,
     )
 
-    plot_sindy_coeff_matrix(sindy=sindy, out_dir=fig_dir, dpi=cfg.dpi)
+    if sindy is not None:
+        plot_sindy_coeff_matrix(sindy=sindy, out_dir=fig_dir, dpi=cfg.dpi)
 
     if cfg.coeff_time_series:
         plot_coeff_time_series(
@@ -2711,24 +2713,25 @@ def generate_all_plots_and_movies(
         )
 
     comps = cfg.movie_components
-    (fig_dir / "rollout_snapshots").mkdir(parents=True, exist_ok=True)
-    save_rollout_snapshot_figures(
-        rollout=rollout,
-        out_dir=fig_dir / "rollout_snapshots",
-        cmap=cfg.rollout_cmap,
-        dpi=cfg.dpi,
-        components=comps,
-    )
+    if rollout.fields_pred is not None:
+        (fig_dir / "rollout_snapshots").mkdir(parents=True, exist_ok=True)
+        save_rollout_snapshot_figures(
+            rollout=rollout,
+            out_dir=fig_dir / "rollout_snapshots",
+            cmap=cfg.rollout_cmap,
+            dpi=cfg.dpi,
+            components=comps,
+        )
 
-    save_rollout_movies(
-        rollout=rollout,
-        out_dir=mov_dir,
-        fps=cfg.movie_fps,
-        every=cfg.movie_every,
-        cmap=cfg.rollout_cmap,
-        dpi=cfg.dpi,
-        components=comps,
-    )
+        save_rollout_movies(
+            rollout=rollout,
+            out_dir=mov_dir,
+            fps=cfg.movie_fps,
+            every=cfg.movie_every,
+            cmap=cfg.rollout_cmap,
+            dpi=cfg.dpi,
+            components=comps,
+        )
 
     if getattr(cfg, "metrics_curves", True):
         plot_metrics_curves_from_artifacts(
@@ -2766,18 +2769,19 @@ def generate_all_plots_and_movies(
         )
 
         # Movie of the error field
-        print("Generating 3D surface movie for error field...")
-        error_field = rollout.fields_pred - rollout.fields_true
-        animate_3d_surface(
-            q_left=error_field,
-            equation=equation,
-            output_path=mov_dir / "rollout_3d_error_surface.mp4",
-            title_left="Error Field (Pred - True)",
-            fps=cfg.movie_fps,
-            dpi=cfg.dpi,
-            interp_factor=interp_factor,
-            plot_cfg=cfg,
-        )
+        if rollout.fields_pred is not None:
+            print("Generating 3D surface movie for error field...")
+            error_field = rollout.fields_pred - rollout.fields_true
+            animate_3d_surface(
+                q_left=error_field,
+                equation=equation,
+                output_path=mov_dir / "rollout_3d_error_surface.mp4",
+                title_left="Error Field (Pred - True)",
+                fps=cfg.movie_fps,
+                dpi=cfg.dpi,
+                interp_factor=interp_factor,
+                plot_cfg=cfg,
+            )
 
     if getattr(cfg, "movie_3d_decomposition", False):
         print("Generating 3D decomposition movie...")
@@ -2796,7 +2800,7 @@ def generate_all_plots_and_movies(
             is_centered=is_centered,
         )
 
-    if getattr(cfg, "movie_3d_reconstruction_comparison", False):
+    if getattr(cfg, "movie_3d_reconstruction_comparison", False) and rollout.A_pred is not None:
         print("Generating 3D reconstruction comparison movies...")
         recon_dir = mov_dir / "3d_reconstruction_comparison"
         recon_dir.mkdir(exist_ok=True)
@@ -2851,7 +2855,7 @@ def generate_all_plots_and_movies(
             plot_cfg=cfg,
         )
 
-    if getattr(cfg, "movie_chronos_comparison", False):
+    if getattr(cfg, "movie_chronos_comparison", False) and rollout.A_pred is not None:
         print("Generating chronos comparison movie...")
         animate_chronos_comparison(
             rollout=rollout,
@@ -2896,22 +2900,29 @@ def generate_all_plots_and_movies(
 
             # Get the time series of the i-th true and predicted coefficients (chronos)
             chronos_true_i = rollout.A_true[:, i]
-            chronos_pred_i = rollout.A_pred[:, i]
 
             # Calculate the contribution field over time for true chronos
             contribution_movie_true_i = chronos_true_i[:, np.newaxis, np.newaxis, np.newaxis] * topos_field_i[np.newaxis, ...]
 
-            # Calculate the contribution field over time for predicted chronos
-            contribution_movie_pred_i = chronos_pred_i[:, np.newaxis, np.newaxis, np.newaxis] * topos_field_i[np.newaxis, ...]
+            contribution_movie_pred_i = None
+            title_left = f"Mode {i} Contribution (True Chronos)"
+            title_right = ""
+            output_path = contrib_dir / f"mode_{i:02d}_contribution_true.mp4"
 
-            output_path = contrib_dir / f"mode_{i:02d}_contribution_true_vs_pred.mp4"
+            if rollout.A_pred is not None:
+                # Calculate the contribution field over time for predicted chronos
+                chronos_pred_i = rollout.A_pred[:, i]
+                contribution_movie_pred_i = chronos_pred_i[:, np.newaxis, np.newaxis, np.newaxis] * topos_field_i[np.newaxis, ...]
+                title_right = f"Mode {i} Contribution (Pred Chronos)"
+                output_path = contrib_dir / f"mode_{i:02d}_contribution_true_vs_pred.mp4"
+
             animate_3d_surface(
                 q_left=contribution_movie_true_i,
                 q_right=contribution_movie_pred_i,
                 equation=equation,
                 output_path=output_path,
-                title_left=f"Mode {i} Contribution (True Chronos)",
-                title_right=f"Mode {i} Contribution (Pred Chronos)",
+                title_left=title_left,
+                title_right=title_right,
                 fps=cfg.movie_fps,
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
@@ -2924,6 +2935,9 @@ def generate_all_plots_and_movies(
 
         # Loop from k=2 to r to generate movies for sum of top k modes
         for k in range(2, r + 1):
+            if rollout.A_pred is None:
+                break # Only makes sense to compare if there is a prediction
+
             print(f"Generating 3D surface movie for cumulative sum of top {k} modes...")
 
             mode_indices = list(range(k))
