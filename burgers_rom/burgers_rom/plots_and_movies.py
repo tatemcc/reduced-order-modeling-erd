@@ -657,6 +657,74 @@ def plot_sindy_coeff_matrix(
     _savefig(fig, out_dir / "sindy_Xi_abs_heatmap.png", dpi=dpi)
 
 
+def plot_true_chronos_line_chart(
+    A_true: np.ndarray,
+    out_dir: Path,
+    dpi: int,
+) -> None:
+    """
+    Plot true POD chronos (coefficients) over time as a line chart.
+
+    The vertical axis is normalized by the RMS of the first chronos.
+
+    Uses a colorbar to indicate mode index for better visualization with many modes.
+
+    Parameters
+    ----------
+    A_true : np.ndarray
+        True coefficients, shape (T, r).
+    out_dir : Path
+        Output directory.
+    dpi : int
+        DPI for saving.
+    """
+    T, r = A_true.shape
+
+    if r == 0:
+        print("Skipping true chronos line chart: no modes to plot.")
+        return
+
+    # Calculate RMS of the first chronos for normalization
+    a0 = A_true[:, 0]
+    rms_a0 = np.sqrt(np.mean(a0**2))
+
+    # Avoid division by zero if the first mode is zero
+    if rms_a0 < 1e-9:
+        rms_a0 = 1.0
+
+    A_normalized = A_true / rms_a0
+
+    fig, ax = plt.subplots(figsize=(18, 9), dpi=dpi) # Wide aspect ratio
+
+    # Use a colormap for mode indices
+    cmap = plt.cm.viridis
+    norm = plt.Normalize(vmin=0, vmax=r - 1)
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])  # Needed for colorbar to work without explicit data
+
+    for i in range(r):
+        ax.plot(A_normalized[:, i], color=cmap(norm(i)), linewidth=1.5, alpha=0.8)
+
+    ax.set_xlabel("Time Index", fontsize=12)
+    ax.set_ylabel("Normalized Coefficient Value ($a_i / \\mathrm{RMS}(a_0)$)", fontsize=12)
+    ax.set_title(f"Normalized True POD Chronos (Top {r} Modes)", fontsize=14)
+    ax.grid(True, linestyle="--", alpha=0.7)
+
+    # Add colorbar for mode index
+    cbar = fig.colorbar(sm, ax=ax, orientation='vertical', label='Mode Index')
+    # Adjust colorbar ticks for readability, especially if r is large
+    if r > 1:
+        cbar_ticks = np.linspace(0, r - 1, min(r, 10), dtype=int) # Max 10 ticks
+        cbar.set_ticks(cbar_ticks)
+        cbar.set_ticklabels([str(t) for t in cbar_ticks])
+    else:
+        cbar.set_ticks([0])
+        cbar.set_ticklabels(['0'])
+
+    fig.tight_layout()
+    _savefig(fig, out_dir / "true_chronos_line_chart.png", dpi=dpi)
+
+
 def plot_coeff_time_series(
     A_true: np.ndarray,
     A_pred: Optional[np.ndarray],
@@ -2699,6 +2767,13 @@ def generate_all_plots_and_movies(
             dpi=cfg.dpi,
             sympy_labels=cfg.sympy_labels,
             sympy_style=cfg.sympy_label_style,
+        )
+
+    if getattr(cfg, "true_chronos_line_chart", False):
+        plot_true_chronos_line_chart(
+            A_true=rollout.A_true,
+            out_dir=fig_dir,
+            dpi=cfg.dpi,
         )
 
     if cfg.coeff_pair_phase:

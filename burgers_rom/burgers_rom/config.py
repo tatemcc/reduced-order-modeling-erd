@@ -220,6 +220,7 @@ class PlotConfig:
     # Coefficient diagnostics
     coeff_time_series: bool = True
     coeff_pair_phase: bool = True
+    true_chronos_line_chart: bool = True
     coeff_pair_max_pairs: int = 45  # caps number of (i,j) phase plots saved
 
     # Optional sympy labels

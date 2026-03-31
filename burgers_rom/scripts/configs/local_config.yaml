@@ -16,7 +16,7 @@ data:
   time_stride: 1
   time_limit: null
 pod:
-  rank: 48
+  rank: 9
   energy_fraction: null
   center: true
 deriv:
@@ -24,7 +24,7 @@ deriv:
   scheme: central
 sindy:
   poly_order: 2
-  enabled: false
+  enabled: true
   include_bias: false
   # optimizer: sr3
   # optimizer_params:
@@ -64,12 +64,12 @@ plots:
   enabled: true
   movie_3d_surface: true
   movie_3d_interp_factor: 3
-  movie_3d_mode_contributions: true
+  movie_3d_mode_contributions: false
   movie_3d_parallel: true
   movie_3d_parallel_procs: 14
   movie_3d_decomposition: true
   movie_3d_decomposition_show_titles: false
-  movie_3d_reconstruction_comparison: true
+  movie_3d_reconstruction_comparison: false
   movie_chronos_comparison: true
   movie_3d_surface_with_state_matrix: true
   dynabench_comparison_timesteps: 30
