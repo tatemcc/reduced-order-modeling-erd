@@ -267,12 +267,14 @@ def plot_pod_singular_values_scatterplot(
         DPI for saving.
     """
     s = np.asarray(pod.s)
+    max_s = s[0] if s.size > 0 else 0.0
+    s_normalized = s / max_s if max_s > 0 else s
     ranks = np.arange(1, len(s) + 1)
     r_trunc = pod.r
 
     fig = plt.figure()
     # Using a small marker size to prevent overlap
-    plt.scatter(ranks, s, s=5)
+    plt.scatter(ranks, s_normalized, s=5)
 
     # Add a vertical line to indicate the truncation rank
     if r_trunc < len(s):
@@ -280,7 +282,7 @@ def plot_pod_singular_values_scatterplot(
         plt.legend()
 
     plt.xlabel("Mode Rank")
-    plt.ylabel("Singular Value")
+    plt.ylabel("Normalized Singular Value")
     plt.title("POD Singular Values vs. Rank")
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
     _savefig(fig, out_dir / "pod_singular_values_scatter.png", dpi=dpi)
@@ -316,12 +318,14 @@ def plot_pod_energy_scatterplot(
     # contribution of the mode to the total variance of the snapshot data.
     # This definition is independent of the specific PDE.
     energy = s**2
+    max_energy = energy[0] if energy.size > 0 else 0.0
+    normalized_energy = energy / max_energy if max_energy > 0 else energy
     ranks = np.arange(1, len(s) + 1)
     r_trunc = pod.r
 
     fig = plt.figure()
     # Using a small marker size to prevent overlap
-    plt.scatter(ranks, energy, s=5)
+    plt.scatter(ranks, normalized_energy, s=5)
 
     # Add a vertical line to indicate the truncation rank
     if r_trunc < len(s):
@@ -329,7 +333,7 @@ def plot_pod_energy_scatterplot(
         plt.legend()
 
     plt.xlabel("Mode Rank")
-    plt.ylabel("Modal Energy ($s^2$)")
+    plt.ylabel("Normalized Modal Energy ($s^2$)")
     plt.title(f"POD Modal Energy vs. Rank for {equation.title()}")
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
     _savefig(fig, out_dir / "pod_energy_scatter.png", dpi=dpi)
