@@ -325,7 +325,7 @@ def plot_pod_energy_scatterplot(
 
     fig = plt.figure()
     # Using a small marker size to prevent overlap
-    plt.scatter(ranks, normalized_energy, s=5)
+    plt.scatter(ranks, normalized_energy, color='#C000FF', s=5)
 
     # Add a vertical line to indicate the truncation rank
     if r_trunc < len(s):
