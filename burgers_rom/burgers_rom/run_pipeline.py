@@ -253,12 +253,14 @@ def run(
                 {
                     "dt": dt,
                     "coeff_mse": err.coeff_mse.tolist(),
+                    "field_mse": err.field_mse.tolist(),
                     "field_l2": err.field_l2.tolist(),
                     "field_rel_l2": err.field_rel_l2.tolist(),
                     "energy_true": energy.energy_true.tolist(),
                     "energy_pred": energy.energy_pred.tolist(),
                 },
             )
+            save_npy(subdirs["metrics"] / "field_mse.npy", err.field_mse)
             save_json(subdirs["metrics"] / "aggregates.json", aggregates)
 
         generate_all_plots_and_movies(

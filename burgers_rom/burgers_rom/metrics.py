@@ -24,6 +24,8 @@ class ErrorCurves:
     ----------
     coeff_mse : np.ndarray
         Mean squared error in coefficient space, shape (T,).
+    field_mse : np.ndarray
+        Mean squared error in field space, shape (T,).
     field_l2 : np.ndarray
         L2 norm of field error, shape (T,).
     field_rel_l2 : np.ndarray
@@ -31,6 +33,7 @@ class ErrorCurves:
     """
 
     coeff_mse: np.ndarray
+    field_mse: np.ndarray
     field_l2: np.ndarray
     field_rel_l2: np.ndarray
 
@@ -82,6 +85,36 @@ def coefficient_mse(
         raise ValueError("A_true and A_pred must have the same shape")
     return np.mean((A_true - A_pred) ** 2, axis=1)
 
+
+def field_mse(
+    fields_true: np.ndarray,
+    fields_pred: np.ndarray,
+) -> np.ndarray:
+    """
+    Compute field-space MSE per time step.
+
+    MSE(t) = mean_{i,j,c} ( fields_pred[t,c,i,j] - fields_true[t,c,i,j] )^2
+
+    Parameters
+    ----------
+    fields_true : np.ndarray
+        True fields, shape (T, C, ny, nx).
+    fields_pred : np.ndarray
+        Predicted fields, shape (T, C, ny, nx).
+
+    Returns
+    -------
+    np.ndarray
+        MSE per time step, shape (T,).
+    """
+    ft = np.asarray(fields_true)
+    fp = np.asarray(fields_pred)
+    if ft.shape != fp.shape:
+        raise ValueError("fields_true and fields_pred must have the same shape")
+    if ft.ndim != 4:
+        raise ValueError("Expected fields shape (T, C, ny, nx)")
+
+    return np.mean((fp - ft) ** 2, axis=(1, 2, 3))
 
 def field_l2_errors(
     fields_true: np.ndarray,
@@ -205,6 +238,7 @@ def compute_curves(
         Time-resolved metrics.
     """
     c_mse = coefficient_mse(A_true, A_pred)
+    f_mse = field_mse(fields_true, fields_pred)
     f_l2, f_rel = field_l2_errors(fields_true, fields_pred, dx=dx, dy=dy)
 
     if equation == "burgers":
@@ -215,7 +249,7 @@ def compute_curves(
         e_pred = np.array([])
 
     return (
-        ErrorCurves(coeff_mse=c_mse, field_l2=f_l2, field_rel_l2=f_rel),
+        ErrorCurves(coeff_mse=c_mse, field_mse=f_mse, field_l2=f_l2, field_rel_l2=f_rel),
         EnergyCurves(energy_true=e_true, energy_pred=e_pred),
     )
 
@@ -240,12 +274,14 @@ def summarize_aggregates(
         Aggregate metrics:
         - final_field_rel_l2: Relative L2 error of fields at the last step.
         - mean_field_rel_l2: Average relative L2 error over the trajectory.
+        - mean_field_mse: Average MSE of fields over the trajectory.
         - mean_coeff_mse: Average MSE of POD coefficients over the trajectory.
         - final_energy_drift: Energy difference (pred - true) at the last step.
         - mean_abs_energy_drift: Average absolute energy difference over the trajectory.
     """
     final_rel = float(err.field_rel_l2[-1]) if err.field_rel_l2.size else 0.0
     mean_rel = float(np.mean(err.field_rel_l2)) if err.field_rel_l2.size else 0.0
+    mean_field_mse = float(np.mean(err.field_mse)) if err.field_mse.size else 0.0
     mean_coeff = float(np.mean(err.coeff_mse)) if err.coeff_mse.size else 0.0
 
     drift = energy.energy_pred - energy.energy_true
@@ -255,6 +291,7 @@ def summarize_aggregates(
     return {
         "final_field_rel_l2": final_rel,
         "mean_field_rel_l2": mean_rel,
+        "mean_field_mse": mean_field_mse,
         "mean_coeff_mse": mean_coeff,
         "final_energy_drift": final_drift,
         "mean_abs_energy_drift": mean_abs_drift,
