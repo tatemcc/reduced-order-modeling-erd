@@ -176,6 +176,7 @@ def run(
             model=sindy.model,
             U=pod.U,
             layout=layout,
+            full_field_traj=trajectories[0],
             A_traj=A_by_traj[0],
             dt=dt,
             horizon_steps=cfg.data.rollout,
@@ -196,12 +197,16 @@ def run(
         aggregates = summarize_aggregates(err, energy)
     else:
         print("SINDy is disabled. Skipping fitting, rollout, and metrics.")
-        from .snapshot import state_vec_to_fields
+        from .snapshot import fields_to_state_vec
 
+        # Get the ground truth coefficients for the rollout segment
         A_true_segment = _coeff_segment(A_by_traj[0], start_idx=0, horizon_steps=cfg.data.rollout)
-        q_true_mat = reconstruct_from_pod(pod.U, A_true_segment.T, mean_state=mean_state).T
-        fields_true = np.stack(
-            [state_vec_to_fields(q_true_mat[i], layout) for i in range(q_true_mat.shape[0])], axis=0
+
+        # Get the full, high-fidelity fields for the same segment
+        end_idx = 0 + cfg.data.rollout
+        fields_true = trajectories[0, 0 : end_idx + 1]
+        q_true_mat = np.stack(
+            [fields_to_state_vec(fields_true[i], layout) for i in range(fields_true.shape[0])], axis=0
         )
         rollout = RolloutResult(
             A_true=A_true_segment, q_true=q_true_mat, fields_true=fields_true

@@ -16,7 +16,7 @@ import numpy as np
 import pysindy as ps
 
 from .pod import reconstruct_from_pod
-from .snapshot import SnapshotLayout, state_vec_to_fields
+from .snapshot import SnapshotLayout, state_vec_to_fields, fields_to_state_vec
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,8 @@ class RolloutResult:
     q_true : np.ndarray
         Ground truth stacked states of shape (T, n_state). Always present.
     fields_true : np.ndarray
-        Ground truth fields of shape (T, C, ny, nx). Always present.
+        Ground truth fields from the original high-fidelity dataset,
+        of shape (T, C, ny, nx). Always present.
     A_pred : np.ndarray, optional
         Predicted coefficients of shape (T, r). None if SINDy is disabled.
     q_pred : np.ndarray, optional
@@ -81,6 +82,7 @@ def rollout_one(
     model: ps.SINDy,
     U: np.ndarray,
     layout: SnapshotLayout,
+    full_field_traj: np.ndarray,
     A_traj: np.ndarray,
     dt: float,
     horizon_steps: int,
@@ -96,6 +98,8 @@ def rollout_one(
         Fitted SINDy model in coefficient space.
     U : np.ndarray
         POD basis of shape (n_state, r).
+    full_field_traj : np.ndarray
+        The original, high-fidelity trajectory of shape (T, C, ny, nx).
     layout : SnapshotLayout
         Snapshot layout for unstacking fields.
     A_traj : np.ndarray
@@ -122,23 +126,27 @@ def rollout_one(
     if horizon_steps < 1:
         raise ValueError("horizon_steps must be >= 1")
 
+    # Ground truth coefficients for the rollout segment
     A_true = _coeff_segment(A_traj, start_idx=start_idx, horizon_steps=horizon_steps)
     a0 = A_true[0]
 
+    # Ground truth fields for the rollout segment (from original data)
+    end_idx = start_idx + horizon_steps
+    fields_true = full_field_traj[start_idx : end_idx + 1]
+    q_true_mat = np.stack(
+        [fields_to_state_vec(fields_true[i], layout) for i in range(fields_true.shape[0])], axis=0
+    )
+
+    # Predict coefficients using the SINDy model
     t = np.arange(horizon_steps + 1, dtype=float) * dt
-    # only supported options for integrator are solve_ivp (default) and odeint
     A_pred = model.simulate(a0, t=t, integrator="odeint")
     A_pred = np.asarray(A_pred)
 
     if A_pred.shape != A_true.shape:
         raise ValueError(f"simulate returned shape {A_pred.shape}, expected {A_true.shape}")
 
-    q_true_mat = reconstruct_from_pod(U, A_true.T, mean_state=mean_state).T
+    # Reconstruct predicted fields from predicted coefficients
     q_pred_mat = reconstruct_from_pod(U, A_pred.T, mean_state=mean_state).T
-
-    fields_true = np.stack(
-        [state_vec_to_fields(q_true_mat[i], layout) for i in range(q_true_mat.shape[0])], axis=0
-    )
     fields_pred = np.stack(
         [state_vec_to_fields(q_pred_mat[i], layout) for i in range(q_pred_mat.shape[0])], axis=0
     )

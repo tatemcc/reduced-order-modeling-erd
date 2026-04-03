@@ -2228,6 +2228,11 @@ def animate_3d_reconstruction_comparison(
 
     Generates a series of movies, one for each number of modes `n` used in
     the reconstruction (from n=0 to n=r).
+
+    The "True" panel shows the original, high-fidelity ground truth data.
+    The "Reconstruction" panel shows the SINDy prediction, reconstructed
+    using a subset of `n` POD modes.
+    The "Error" panel shows the difference between the two.
     """
     use_parallel = plot_cfg and getattr(plot_cfg, "movie_3d_parallel", False)
     if not use_parallel:
