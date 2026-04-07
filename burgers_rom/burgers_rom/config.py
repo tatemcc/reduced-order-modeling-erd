@@ -188,15 +188,18 @@ class PlotConfig:
     compact_figures_subdir: str = "figures_compact"
     compact_movies_subdir: str = "movies_compact"
     compact_figsize_scale: float = 0.5
+    # For compact plots, use larger fonts and thicker lines relative to the
+    # smaller figure size to improve readability.
     compact_rc_params: Dict[str, Any] = field(default_factory=lambda: {
-        "font.size": 8,
-        "axes.labelsize": 7,
-        "axes.titlesize": 8,
-        "xtick.labelsize": 6,
-        "ytick.labelsize": 6,
-        "legend.fontsize": 6,
-        "lines.linewidth": 1.0,
-        "lines.markersize": 3,
+        "font.size": 14,
+        "axes.labelsize": 12,
+        "axes.titlesize": 14,
+        "figure.titlesize": 16,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "lines.linewidth": 2.0,
+        "lines.markersize": 5,
     })
 
     dpi: int = 150

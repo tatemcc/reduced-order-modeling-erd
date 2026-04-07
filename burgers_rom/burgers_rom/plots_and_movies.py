@@ -401,12 +401,12 @@ def plot_pod_decomposition_matrix(
         ax.set_xticks([])
         ax.set_yticks([])
 
-    ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=40)
+    ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=40 * figsize_scale)
     ax_eq.axis('off')
-    ax_mul.text(0.5, 0.5, 'x', ha='center', va='center', fontsize=30)
+    ax_mul.text(0.5, 0.5, 'x', ha='center', va='center', fontsize=30 * figsize_scale)
     ax_mul.axis('off')
 
-    fig.suptitle("POD Decomposition: X_r = U x A", fontsize=16)
+    fig.suptitle("POD Decomposition: X_r = U x A")
     try:
         fig.tight_layout(rect=[0, 0, 1, 0.95])
     except ValueError:
@@ -520,12 +520,12 @@ def plot_pod_decomposition_matrix_square_pixels(
         ax.set_xticks([])
         ax.set_yticks([])
 
-    ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=40)
+    ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=40 * figsize_scale)
     ax_eq.axis('off')
-    ax_mul.text(0.5, 0.5, 'x', ha='center', va='center', fontsize=30)
+    ax_mul.text(0.5, 0.5, 'x', ha='center', va='center', fontsize=30 * figsize_scale)
     ax_mul.axis('off')
 
-    fig.suptitle("POD Decomposition (Square Pixels): X_r = U x A", fontsize=16)
+    fig.suptitle("POD Decomposition (Square Pixels): X_r = U x A")
     try:
         fig.tight_layout(rect=[0, 0, 1, 0.95])
     except ValueError:
@@ -727,9 +727,9 @@ def plot_true_chronos_line_chart(
     for i in range(r):
         ax.plot(A_normalized[:, i], color=cmap(norm(i)), linewidth=1.5, alpha=0.8)
 
-    ax.set_xlabel("Time Index", fontsize=12)
-    ax.set_ylabel("Normalized Coefficient Value ($a_i / \\mathrm{RMS}(a_0)$)", fontsize=12)
-    ax.set_title(f"Normalized True POD Chronos (Top {r} Modes)", fontsize=14)
+    ax.set_xlabel("Time Index")
+    ax.set_ylabel("Normalized Coefficient Value ($a_i / \\mathrm{RMS}(a_0)$)")
+    ax.set_title(f"Normalized True POD Chronos (Top {r} Modes)")
     ax.grid(True, linestyle="--", alpha=0.7)
 
     # Add colorbar for mode index
@@ -796,7 +796,7 @@ def plot_coeff_time_series(
     plt.ylabel("coefficient value")
     plt.title(title)
     if r <= 10:
-        plt.legend(ncol=2, fontsize=8)
+        plt.legend(ncol=2)
     _savefig(fig, out_dir / "coeff_time_series_true_vs_pred.png", dpi=dpi)
 
 
@@ -1346,7 +1346,11 @@ def plot_field_rel_l2_comparison_with_dynabench(
 
 def _render_3d_surface_frame_wrapper(args: tuple) -> None:
     """Helper to unpack arguments for multiprocessing.Pool.map."""
-    return _render_3d_surface_frame(*args)
+    # The last argument is the rc_params dict
+    rc_params = args[-1]
+    plot_args = args[:-1]
+    with plt.rc_context(rc_params):
+        _render_3d_surface_frame(*plot_args)
 
 
 def _render_3d_surface_frame(
@@ -1508,6 +1512,7 @@ def animate_3d_surface(
         use_parallel = getattr(plot_cfg, "movie_3d_parallel", False)
 
     # --- Data preparation based on equation ---
+    z_right: Optional[np.ndarray] = None
     color_data_true: Optional[np.ndarray] = None
     color_data_right: Optional[np.ndarray] = None
     if equation == "burgers":
@@ -1629,8 +1634,7 @@ def animate_3d_surface(
     if use_parallel and plot_cfg is not None:
         n_procs = plot_cfg.movie_3d_parallel_procs
         if n_procs is None:
-            n_procs = multiprocessing.cpu_count() // 2
-            if n_procs == 0: n_procs = 1 # Ensure at least one process
+            n_procs = max(1, multiprocessing.cpu_count() // 2)
         print(f"Generating {T} frames for 3D movie in parallel using {n_procs} processes...")
 
         # Use 'spawn' context for multiprocessing to avoid fork-safety issues with
@@ -1638,6 +1642,8 @@ def animate_3d_surface(
         # process, which is safer but slightly slower to start than the default
         # 'fork' method. This is the default on Windows and macOS for this reason.
         mp_context = multiprocessing.get_context("spawn")
+
+        rc_params_for_worker = getattr(plot_cfg, 'compact_rc_params', {}) if compact else {}
 
         with tempfile.TemporaryDirectory() as temp_dir:
             frame_dir = Path(temp_dir)
@@ -1662,6 +1668,7 @@ def animate_3d_surface(
                     cmap_obj if color_mode == "colormap" else None,
                     color_norm if color_mode == "colormap" else None,
                     light,
+                    rc_params_for_worker,
                 )
                 tasks.append(task_args)
 
@@ -1818,7 +1825,11 @@ def animate_3d_surface(
 
 def _render_3d_decomposition_frame_wrapper(args: tuple) -> None:
     """Helper to unpack arguments for multiprocessing.Pool.map."""
-    _render_3d_decomposition_frame(*args)
+    # The last argument is the rc_params dict
+    rc_params = args[-1]
+    plot_args = args[:-1]
+    with plt.rc_context(rc_params):
+        _render_3d_decomposition_frame(*plot_args)
 
 
 def _render_3d_decomposition_frame( # type: ignore
@@ -1863,6 +1874,7 @@ def _render_3d_decomposition_frame( # type: ignore
     dpi: int,
     z_contrib_lims: List[Tuple[float, float]],
     show_titles: bool,
+    compact: bool,
 ):
     """Renders a single frame of the 3D decomposition animation."""
     # This function is self-contained to be picklable for multiprocessing.
@@ -1903,7 +1915,7 @@ def _render_3d_decomposition_frame( # type: ignore
 
     # --- Figure Layout ---
     n_plot_rows = n_modes_to_plot
-    figsize_scale = 0.5 if 'compact' in str(output_path) else 1.0 # A bit of a hack to pass this info
+    figsize_scale = 0.5 if compact else 1.0
     fig_width = (28 if has_mean else 22) * figsize_scale
     fig_height = (4 * n_plot_rows) * figsize_scale
     fig = plt.figure(figsize=(fig_width, max(fig_height, 7)), dpi=dpi)
@@ -1932,7 +1944,7 @@ def _render_3d_decomposition_frame( # type: ignore
         main_col, approx_col = 0, 1
         contrib_col, eq_col, topos_col, mul_col, chronos_col = 2, 3, 4, 5, 6
 
-    fig.suptitle(f"Decomposition at Time Step {frame}", fontsize=16)
+    fig.suptitle(f"Decomposition at Time Step {frame}")
 
     # --- Main Plot ---
     ax_main = fig.add_subplot(gs[0:n_plot_rows, main_col], projection='3d')
@@ -1946,20 +1958,20 @@ def _render_3d_decomposition_frame( # type: ignore
 
     # '≈' symbol in its own axes for robust alignment
     ax_approx = fig.add_subplot(gs[0:n_plot_rows, approx_col])
-    ax_approx.text(0.5, 0.5, '≈', ha='center', va='center', fontsize=60, color='gray', transform=ax_approx.transAxes)
+    ax_approx.text(0.5, 0.5, '≈', ha='center', va='center', fontsize=60 * figsize_scale, color='gray', transform=ax_approx.transAxes)
     ax_approx.axis('off')
 
     # --- Mean Topos Plot (if exists) ---
     if has_mean:
         ax_mean = fig.add_subplot(gs[0:n_plot_rows, mean_col], projection='3d')
         _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(q_mean_field, equation)
-        _plot_surface_on_ax(ax_mean, z_mean, q_mean_field, color_mean, z_main_min, z_main_max, c_mode, c_map, interp_k=2)
+        _plot_surface_on_ax(ax_mean, z_mean, q_mean_field, color_mean, z_main_min, z_main_max, c_mode, c_map, interp_k=2) # type: ignore
         if show_titles:
-            ax_mean.set_title("Mean Topos", fontsize=10)
+            ax_mean.set_title("Mean Topos")
         ax_mean.set_zlabel(z_lbl, labelpad=-8)
 
         ax_plus_mean = fig.add_subplot(gs[0:n_plot_rows, plus_col])
-        ax_plus_mean.text(0.5, 0.5, '+', ha='center', va='center', fontsize=24, transform=ax_plus_mean.transAxes)
+        ax_plus_mean.text(0.5, 0.5, '+', ha='center', va='center', fontsize=24 * figsize_scale, transform=ax_plus_mean.transAxes)
         ax_plus_mean.axis('off')
 
     # --- Mode Plots ---
@@ -1974,14 +1986,14 @@ def _render_3d_decomposition_frame( # type: ignore
         z_min_c, z_max_c = z_contrib_lims[i]
         _plot_surface_on_ax(ax_contrib, z_contrib_frames[i], q_contrib_frames[i], color_contrib_frames[i], z_min_c, z_max_c, c_mode, c_map, interp_k=2)
         if show_titles:
-            ax_contrib.set_title(f"Mode {i} Contribution", fontsize=10)
+            ax_contrib.set_title(f"Mode {i} Contribution")
         ax_contrib.set_zlabel(z_lbl, labelpad=-8)
 
         # Static Topos Plot
         ax_t = fig.add_subplot(gs[row_idx, topos_col], projection='3d')
         _plot_surface_on_ax(ax_t, z_topos[i], topos_fields[i], color_topos[i], z_topos[i].min(), z_topos[i].max(), c_mode, c_map, interp_k=2)
         if show_titles:
-            ax_t.set_title(f"Topos (Mode {i})", fontsize=10)
+            ax_t.set_title(f"Topos (Mode {i})")
         ax_t.set_zlabel(z_lbl, labelpad=-8)
 
         # Chronos Plot
@@ -1989,29 +2001,29 @@ def _render_3d_decomposition_frame( # type: ignore
         ax_c.plot(np.arange(T), A_true[:, i], color=f"C{i}")
         ax_c.plot([frame], [A_true[frame, i]], 'o', color='red', markersize=8)
         if show_titles:
-            ax_c.set_title(f"Chronos (Mode {i})", fontsize=10)
-        ax_c.set_xlabel("Time Step", fontsize=8); ax_c.set_ylabel("Amplitude", fontsize=8)
-        ax_c.grid(True, alpha=0.3); ax_c.tick_params(axis='both', which='major', labelsize=8)
+            ax_c.set_title(f"Chronos (Mode {i})")
+        ax_c.set_xlabel("Time Step"); ax_c.set_ylabel("Amplitude")
+        ax_c.grid(True, alpha=0.3); ax_c.tick_params(axis='both', which='major')
 
         # Add '+' symbol between rows, centered on the plot column
         pos_contrib = ax_contrib.get_position()
         if row_idx > 0: # Add '+' between rows
-            fig.text(pos_contrib.x0 + pos_contrib.width / 2, pos_contrib.y1 + 0.02, '+', ha='center', va='center', fontsize=24)
+            fig.text(pos_contrib.x0 + pos_contrib.width / 2, pos_contrib.y1 + 0.02, '+', ha='center', va='center', fontsize=24 * figsize_scale)
 
         # Add text symbols for this row using dedicated axes for alignment
         ax_eq = fig.add_subplot(gs[row_idx, eq_col])
-        ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=24, transform=ax_eq.transAxes)
+        ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=24 * figsize_scale, transform=ax_eq.transAxes)
         ax_eq.axis('off')
 
         ax_mul = fig.add_subplot(gs[row_idx, mul_col])
-        ax_mul.text(0.5, 0.5, '×', ha='center', va='center', fontsize=24, transform=ax_mul.transAxes)
+        ax_mul.text(0.5, 0.5, '×', ha='center', va='center', fontsize=24 * figsize_scale, transform=ax_mul.transAxes)
         ax_mul.axis('off')
 
     if r > n_modes_to_plot:
         ax_placeholder = fig.add_subplot(gs[n_plot_rows, contrib_col]); ax_placeholder.axis('off')
         pos = ax_placeholder.get_position()
         # Center the '...' horizontally
-        fig.text(pos.x0 + pos.width / 2, pos.y0 + pos.height, '+  more modes', ha='center', va='center', fontsize=20)
+        fig.text(pos.x0 + pos.width / 2, pos.y0 + pos.height, '+  more modes', ha='center', va='center', fontsize=20 * figsize_scale)
 
     fig.savefig(output_path)
     plt.close(fig)
@@ -2124,6 +2136,8 @@ def animate_3d_decomposition(
         frame_indices = range(0, T, movie_every)
         n_frames = len(frame_indices)
 
+        rc_params_for_worker = getattr(plot_cfg, 'compact_rc_params', {}) if compact else {}
+
         print(f"Generating {n_frames} frames for 3D decomposition movie in parallel using {n_procs} processes...")
         mp_context = multiprocessing.get_context("spawn")
 
@@ -2149,6 +2163,8 @@ def animate_3d_decomposition(
                     x, y, x_fine, y_fine, xx_fine, yy_fine, light, dpi,
                     z_contrib_lims,
                     show_titles,
+                    compact,
+                    rc_params_for_worker,
                 )
                 tasks.append(task_args)
 
@@ -2188,7 +2204,11 @@ def animate_3d_decomposition(
 
 def _render_3d_reconstruction_frame_wrapper(args: tuple) -> None:
     """Helper to unpack arguments for multiprocessing.Pool.map."""
-    return _render_3d_reconstruction_frame(*args)
+    # The last argument is the rc_params dict
+    rc_params = args[-1]
+    plot_args = args[:-1]
+    with plt.rc_context(rc_params):
+        _render_3d_reconstruction_frame(*plot_args)
 
 
 def _render_3d_reconstruction_frame(
@@ -2205,6 +2225,7 @@ def _render_3d_reconstruction_frame(
     plot_props_true: tuple,
     plot_props_recon: tuple,
     plot_props_error: tuple,
+    compact: bool,
 ):
     """Renders a single 3-panel frame of the 3D reconstruction comparison animation."""
 
@@ -2241,9 +2262,10 @@ def _render_3d_reconstruction_frame(
         ax.tick_params(axis='x', pad=-5); ax.tick_params(axis='y', pad=-5); ax.tick_params(axis='z', pad=-3)
 
     # --- Figure Layout ---
-    fig = plt.figure(figsize=(21, 7), dpi=dpi)
+    figsize_scale = 0.5 if compact else 1.0
+    fig = plt.figure(figsize=(21 * figsize_scale, 7 * figsize_scale), dpi=dpi)
     gs = gridspec.GridSpec(1, 3, wspace=0.1, hspace=0.1)
-    fig.suptitle(f"Time Step {frame}", fontsize=16)
+    fig.suptitle(f"Time Step {frame}")
 
     z_lbl_true, c_mode_true, c_map_true = plot_props_true
     z_lbl_recon, c_mode_recon, c_map_recon = plot_props_recon
@@ -2352,6 +2374,8 @@ def animate_3d_reconstruction_comparison(
             z_max = z_min + 1.0
 
         with tempfile.TemporaryDirectory() as temp_dir:
+            rc_params_for_worker = getattr(plot_cfg, 'compact_rc_params', {}) if compact else {}
+
             frame_dir = Path(temp_dir)
             tasks = []
             for frame in range(T):
@@ -2365,6 +2389,8 @@ def animate_3d_reconstruction_comparison(
                     (z_lbl_true, c_mode_true, c_map_true),
                     (z_lbl_recon, c_mode_recon, c_map_recon),
                     (z_lbl_error, c_mode_error, c_map_error),
+                    compact,
+                    rc_params_for_worker,
                 ))
 
             with mp_context.Pool(processes=n_procs) as pool, tqdm(total=T, desc=f"Rendering frames (n={n})") as pbar:
@@ -2462,7 +2488,7 @@ def animate_chronos_comparison(
     axes[-1].set_xlabel("Time Step")
 
     if r > n_modes_to_plot:
-        ax_text.text(0.5, 0.5, "+ more modes", ha='center', va='center', fontsize=14, style='italic', color='gray')
+        ax_text.text(0.5, 0.5, "+ more modes", ha='center', va='center', fontsize=14 * figsize_scale, style='italic', color='gray')
     ax_text.axis('off')
 
     ax_bar.axhline(y=0.5, xmin=0.1, xmax=0.9, color='black', linewidth=5)
@@ -2491,7 +2517,11 @@ def animate_chronos_comparison(
 
 def _render_3d_surface_with_state_matrix_frame_wrapper(args: tuple) -> None:
     """Helper to unpack arguments for multiprocessing.Pool.map."""
-    return _render_3d_surface_with_state_matrix_frame(*args)
+    # The last argument is the rc_params dict
+    rc_params = args[-1]
+    plot_args = args[:-1]
+    with plt.rc_context(rc_params):
+        _render_3d_surface_with_state_matrix_frame(*plot_args)
 
 
 def _render_3d_surface_with_state_matrix_frame(
@@ -2518,6 +2548,7 @@ def _render_3d_surface_with_state_matrix_frame(
     cmap_obj: Optional[Any],
     color_norm: Optional[Normalize],
     light: LightSource,
+    compact: bool,
 ) -> None:
     """Renders a single frame of the 3D surface with state matrix animation."""
     fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -2576,7 +2607,11 @@ def _render_3d_surface_with_state_matrix_frame(
 
 def _render_3d_surface_clean_frame_wrapper(args: tuple) -> None:
     """Helper to unpack arguments for multiprocessing.Pool.map."""
-    return _render_3d_surface_clean_frame(*args)
+    # The last argument is the rc_params dict
+    rc_params = args[-1]
+    plot_args = args[:-1]
+    with plt.rc_context(rc_params):
+        _render_3d_surface_clean_frame(*plot_args)
 
 
 def _render_3d_surface_clean_frame(
@@ -2601,6 +2636,7 @@ def _render_3d_surface_clean_frame(
     cmap_obj: Optional[Any],
     color_norm: Optional[Normalize],
     light: LightSource,
+    compact: bool,
 ) -> None:
     """Renders a single frame of the clean 3D surface animation and saves it to a file."""
     fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -2704,8 +2740,10 @@ def animate_3d_surface_clean(
     mp_context = multiprocessing.get_context("spawn")
 
     with tempfile.TemporaryDirectory() as temp_dir:
+        rc_params_for_worker = getattr(plot_cfg, 'compact_rc_params', {}) if compact else {}
+
         frame_dir = Path(temp_dir)
-        tasks = [(frame, q[frame], z[frame], color_data[frame] if color_data is not None else None, frame_dir / f"frame_{frame:05d}.png", figsize, dpi, x, y, x_fine, y_fine, xx_fine, yy_fine, z_min, z_max, color_mode, cmap_obj, color_norm, light) for frame in range(T)]
+        tasks = [(frame, q[frame], z[frame], color_data[frame] if color_data is not None else None, frame_dir / f"frame_{frame:05d}.png", figsize, dpi, x, y, x_fine, y_fine, xx_fine, yy_fine, z_min, z_max, color_mode, cmap_obj, color_norm, light, compact, rc_params_for_worker) for frame in range(T)]
 
         with mp_context.Pool(processes=n_procs) as pool, tqdm(total=T, desc="Rendering clean 3D frames") as pbar:
             for _ in pool.imap_unordered(_render_3d_surface_clean_frame_wrapper, tasks):
@@ -3203,9 +3241,11 @@ def animate_3d_surface_with_state_matrix(
     mp_context = multiprocessing.get_context("spawn")
 
     with tempfile.TemporaryDirectory() as temp_dir:
+        rc_params_for_worker = getattr(plot_cfg, 'compact_rc_params', {}) if compact else {}
+
         frame_dir = Path(temp_dir)
         tasks = [
-            (frame, q_true[frame], z_true[frame], color_data_true[frame] if color_data_true is not None else None, X_full, frame_dir / f"frame_{frame:05d}.png", figsize, dpi, x, y, x_fine, y_fine, xx_fine, yy_fine, z_min, z_max, z_label, color_mode, cmap_obj, color_norm, light) for frame in range(T)
+            (frame, q_true[frame], z_true[frame], color_data_true[frame] if color_data_true is not None else None, X_full, frame_dir / f"frame_{frame:05d}.png", figsize, dpi, x, y, x_fine, y_fine, xx_fine, yy_fine, z_min, z_max, z_label, color_mode, cmap_obj, color_norm, light, compact, rc_params_for_worker) for frame in range(T)
         ]
 
         with mp_context.Pool(processes=n_procs) as pool, tqdm(total=T, desc="Rendering frames") as pbar:
