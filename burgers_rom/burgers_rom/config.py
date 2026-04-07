@@ -183,6 +183,22 @@ class PlotConfig:
     figures_subdir: str = "figures"
     movies_subdir: str = "movies"
 
+    # New options for compact plots
+    generate_compact: bool = False
+    compact_figures_subdir: str = "figures_compact"
+    compact_movies_subdir: str = "movies_compact"
+    compact_figsize_scale: float = 0.5
+    compact_rc_params: Dict[str, Any] = field(default_factory=lambda: {
+        "font.size": 8,
+        "axes.labelsize": 7,
+        "axes.titlesize": 8,
+        "xtick.labelsize": 6,
+        "ytick.labelsize": 6,
+        "legend.fontsize": 6,
+        "lines.linewidth": 1.0,
+        "lines.markersize": 3,
+    })
+
     dpi: int = 150
 
     # Basis visualization
