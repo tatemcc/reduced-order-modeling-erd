@@ -342,15 +342,12 @@ def plot_pod_decomposition_matrix(
     pod: PODResult,
     out_dir: Path,
     dpi: int,
-    compact: bool = False,
 ) -> None:
     """
     Plot the POD decomposition X_r = U @ A as a horizontal heatmap diagram.
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     pod : PODResult
         POD results containing U and A.
     out_dir : Path
@@ -375,8 +372,7 @@ def plot_pod_decomposition_matrix(
     vmax_U = np.max(np.abs(U))
     vmax_A = np.max(np.abs(A))
 
-    figsize_scale = 0.5 if compact else 1.0
-    fig = plt.figure(figsize=(20 * figsize_scale, 5 * figsize_scale))
+    fig = plt.figure(figsize=(20, 5))
     # Layout: X_r = U x A
     # Proportional widths for matrices, with small gaps for operators
     gs = gridspec.GridSpec(1, 5, width_ratios=[M, M * 0.1, r, r * 0.5, M])
@@ -401,12 +397,12 @@ def plot_pod_decomposition_matrix(
         ax.set_xticks([])
         ax.set_yticks([])
 
-    ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=40 * figsize_scale)
+    ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=40)
     ax_eq.axis('off')
-    ax_mul.text(0.5, 0.5, 'x', ha='center', va='center', fontsize=30 * figsize_scale)
+    ax_mul.text(0.5, 0.5, 'x', ha='center', va='center', fontsize=30)
     ax_mul.axis('off')
 
-    fig.suptitle("POD Decomposition: X_r = U x A")
+    fig.suptitle("POD Decomposition: X_r = U x A", fontsize=16)
     try:
         fig.tight_layout(rect=[0, 0, 1, 0.95])
     except ValueError:
@@ -419,7 +415,6 @@ def plot_pod_decomposition_matrix_square_pixels(
     pod: PODResult,
     out_dir: Path,
     dpi: int,
-    compact: bool = False,
 ) -> None:
     """
     Plot the POD decomposition X_r = U @ A as a horizontal heatmap diagram,
@@ -427,8 +422,6 @@ def plot_pod_decomposition_matrix_square_pixels(
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     pod : PODResult
         POD results containing U and A.
     out_dir : Path
@@ -462,8 +455,7 @@ def plot_pod_decomposition_matrix_square_pixels(
 
     # Set figure size to match the overall aspect ratio of the layout.
     # This is key to making the pixels square.
-    figsize_scale = 0.5 if compact else 1.0
-    base_width = 20.0 * figsize_scale  # inches
+    base_width = 20.0  # inches
     if total_width_units <= 0 or total_height_units <= 0:
         return # Avoid division by zero
 
@@ -520,12 +512,12 @@ def plot_pod_decomposition_matrix_square_pixels(
         ax.set_xticks([])
         ax.set_yticks([])
 
-    ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=40 * figsize_scale)
+    ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=40)
     ax_eq.axis('off')
-    ax_mul.text(0.5, 0.5, 'x', ha='center', va='center', fontsize=30 * figsize_scale)
+    ax_mul.text(0.5, 0.5, 'x', ha='center', va='center', fontsize=30)
     ax_mul.axis('off')
 
-    fig.suptitle("POD Decomposition (Square Pixels): X_r = U x A")
+    fig.suptitle("POD Decomposition (Square Pixels): X_r = U x A", fontsize=16)
     try:
         fig.tight_layout(rect=[0, 0, 1, 0.95])
     except ValueError:
@@ -537,15 +529,12 @@ def plot_true_state_matrix(
     X: np.ndarray,
     out_dir: Path,
     dpi: int,
-    compact: bool = False,
 ) -> None:
     """
     Plot the true state snapshot matrix X as a heatmap with square pixels.
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     X : np.ndarray
         Snapshot matrix of shape (D, T).
     out_dir : Path
@@ -562,8 +551,7 @@ def plot_true_state_matrix(
     vmax = np.max(np.abs(X))
 
     # Set figure size to match the aspect ratio of the matrix.
-    figsize_scale = 0.5 if compact else 1.0
-    base_width = 20.0 * figsize_scale  # inches
+    base_width = 20.0  # inches
     if T <= 0 or D <= 0:
         return # Avoid division by zero
     fig_width = base_width
@@ -593,15 +581,12 @@ def plot_pod_basis_fields(
     n_modes: int,
     cmap: str,
     dpi: int,
-    compact: bool = False,
 ) -> None:
     """
     Plot POD basis modes in field space for each component.
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     U : np.ndarray
         POD basis, shape (n_state, r).
     layout : SnapshotLayout
@@ -627,8 +612,7 @@ def plot_pod_basis_fields(
         vmax_abs = max(abs(vmin), abs(vmax))
         vmin, vmax = -vmax_abs, vmax_abs
 
-        figsize_scale = 0.5 if compact else 1.0
-        fig, axes = plt.subplots(1, layout.n_components, figsize=(5.0 * layout.n_components * figsize_scale, 4.0 * figsize_scale), dpi=dpi)
+        fig, axes = plt.subplots(1, layout.n_components, figsize=(5.0 * layout.n_components, 4.0), dpi=dpi)
         if layout.n_components == 1:
             axes = [axes]
 
@@ -649,15 +633,12 @@ def plot_sindy_coeff_matrix(
     sindy: SINDyFitResult,
     out_dir: Path,
     dpi: int,
-    compact: bool = False,
 ) -> None:
     """
     Plot absolute value heatmap of the SINDy coefficient matrix.
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     sindy : SINDyFitResult
         SINDy fit results.
     out_dir : Path
@@ -667,8 +648,7 @@ def plot_sindy_coeff_matrix(
     """
     Xi = np.asarray(sindy.coefficient_matrix)
 
-    figsize_scale = 0.5 if compact else 1.0
-    fig = plt.figure(figsize=(10 * figsize_scale, 4 * figsize_scale))
+    fig = plt.figure(figsize=(10, 4))
     plt.imshow(np.abs(Xi), aspect="auto")
     plt.xlabel("feature index")
     plt.ylabel("equation index")
@@ -681,7 +661,6 @@ def plot_true_chronos_line_chart(
     A_true: np.ndarray,
     out_dir: Path,
     dpi: int,
-    compact: bool = False,
 ) -> None:
     """
     Plot true POD chronos (coefficients) over time as a line chart.
@@ -715,8 +694,7 @@ def plot_true_chronos_line_chart(
 
     A_normalized = A_true / rms_a0
 
-    figsize_scale = 0.5 if compact else 1.0
-    fig, ax = plt.subplots(figsize=(18 * figsize_scale, 9 * figsize_scale), dpi=dpi) # Wide aspect ratio
+    fig, ax = plt.subplots(figsize=(18, 9), dpi=dpi) # Wide aspect ratio
 
     # Use a colormap for mode indices
     cmap = plt.cm.viridis
@@ -727,9 +705,9 @@ def plot_true_chronos_line_chart(
     for i in range(r):
         ax.plot(A_normalized[:, i], color=cmap(norm(i)), linewidth=1.5, alpha=0.8)
 
-    ax.set_xlabel("Time Index")
-    ax.set_ylabel("Normalized Coefficient Value ($a_i / \\mathrm{RMS}(a_0)$)")
-    ax.set_title(f"Normalized True POD Chronos (Top {r} Modes)")
+    ax.set_xlabel("Time Index", fontsize=12)
+    ax.set_ylabel("Normalized Coefficient Value ($a_i / \\mathrm{RMS}(a_0)$)", fontsize=12)
+    ax.set_title(f"Normalized True POD Chronos (Top {r} Modes)", fontsize=14)
     ax.grid(True, linestyle="--", alpha=0.7)
 
     # Add colorbar for mode index
@@ -754,15 +732,12 @@ def plot_coeff_time_series(
     dpi: int,
     sympy_labels: bool,
     sympy_style: str,
-    compact: bool = False,
 ) -> None:
     """
     Plot coefficient time series for true and predicted trajectories.
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     A_true : np.ndarray
         True coefficients, shape (T, r).
     out_dir : Path
@@ -784,8 +759,7 @@ def plot_coeff_time_series(
     if sympy_labels:
         labels = _safe_sympy_symbols(r, sympy_style)
 
-    figsize_scale = 0.5 if compact else 1.0
-    fig = plt.figure(figsize=(10 * figsize_scale, 5 * figsize_scale))
+    fig = plt.figure(figsize=(10, 5))
     for i in range(r):
         name = labels[i] if labels is not None else f"a{i}"
         # sync the color across true and pred for the same coefficient
@@ -796,7 +770,7 @@ def plot_coeff_time_series(
     plt.ylabel("coefficient value")
     plt.title(title)
     if r <= 10:
-        plt.legend(ncol=2)
+        plt.legend(ncol=2, fontsize=8)
     _savefig(fig, out_dir / "coeff_time_series_true_vs_pred.png", dpi=dpi)
 
 
@@ -807,15 +781,12 @@ def plot_coeff_phase_portraits(
     max_pairs: int,
     sympy_labels: bool,
     sympy_style: str,
-    compact: bool = False,
 ) -> None:
     """
     Plot phase portraits (a_i(t), a_j(t)) for coefficient trajectories.
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     A : np.ndarray
         Coefficients, shape (T, r).
     out_dir : Path
@@ -851,8 +822,7 @@ def plot_coeff_phase_portraits(
         li = labels[i] if labels is not None else f"a{i}"
         lj = labels[j] if labels is not None else f"a{j}"
 
-        figsize_scale = 0.5 if compact else 1.0
-        fig = plt.figure(figsize=(4.5 * figsize_scale, 4.5 * figsize_scale))
+        fig = plt.figure(figsize=(4.5, 4.5))
         plt.plot(xi, xj, linewidth=1.0)
         plt.xlabel(li)
         plt.ylabel(lj)
@@ -867,15 +837,12 @@ def _frame_true_pred(
     title_right: str,
     cmap: str,
     dpi: int,
-    compact: bool = False,
 ) -> np.ndarray:
     """
     Render a side-by-side true vs predicted heatmap frame.
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     true_field : np.ndarray
         True field, shape (ny, nx).
     pred_field : np.ndarray
@@ -897,8 +864,7 @@ def _frame_true_pred(
     vmin = float(min(true_field.min(), pred_field.min()))
     vmax = float(max(true_field.max(), pred_field.max()))
 
-    figsize_scale = 0.5 if compact else 1.0
-    fig, axes = plt.subplots(1, 2, figsize=(8 * figsize_scale, 3 * figsize_scale), dpi=dpi)
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3), dpi=dpi)
     axes[0].imshow(true_field, origin="lower", aspect="equal", vmin=vmin, vmax=vmax, cmap=cmap)
     axes[0].set_title(title_left)
     axes[0].axis("off")
@@ -923,15 +889,12 @@ def save_rollout_movies(
     cmap: str,
     dpi: int,
     components: Optional[List[int]],
-    compact: bool = False,
 ) -> None:
     """
     Save GIF movies for rollout true vs predicted fields.
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     rollout : RolloutResult
         Rollout outputs including fields_true and fields_pred.
     out_dir : Path
@@ -966,7 +929,6 @@ def save_rollout_movies(
                     title_right=f"pred comp {c} t={t_idx}",
                     cmap=cmap,
                     dpi=dpi,
-                    compact=compact,
                 )
             )
         gif_path = out_dir / f"rollout_true_vs_pred_comp{c}.gif"
@@ -979,15 +941,12 @@ def save_rollout_snapshot_figures(
     cmap: str,
     dpi: int,
     components: Optional[List[int]],
-    compact: bool = False,
 ) -> None:
     """
     Save a small set of true vs predicted snapshots.
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     rollout : RolloutResult
         Rollout outputs.
     out_dir : Path
@@ -1014,8 +973,7 @@ def save_rollout_snapshot_figures(
             vmin = float(min(true_field.min(), pred_field.min()))
             vmax = float(max(true_field.max(), pred_field.max()))
 
-            figsize_scale = 0.5 if compact else 1.0
-            fig, axes = plt.subplots(1, 2, figsize=(8 * figsize_scale, 3 * figsize_scale), dpi=dpi)
+            fig, axes = plt.subplots(1, 2, figsize=(8, 3), dpi=dpi)
             im0 = axes[0].imshow(true_field, origin="lower", aspect="equal", vmin=vmin, vmax=vmax, cmap=cmap)
             axes[0].set_title(f"true comp {c} t={t_idx}")
             axes[0].axis("off")
@@ -1033,7 +991,6 @@ def plot_metrics_curves_from_artifacts(
     rundir: Path,
     out_dir: Path,
     dpi: int,
-    compact: bool = False,
 ) -> None:
     """
     Plot key rollout curves from metrics/curves.json and save to figures/.
@@ -1046,8 +1003,6 @@ def plot_metrics_curves_from_artifacts(
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     rundir : Path
         Run directory containing metrics/curves.json.
     out_dir : Path
@@ -1071,9 +1026,8 @@ def plot_metrics_curves_from_artifacts(
 
     t = np.arange(len(coeff_mse), dtype=int)
 
-    figsize_scale = 0.5 if compact else 1.0
     if coeff_mse.size:
-        fig = plt.figure(figsize=(7.5 * figsize_scale, 4.0 * figsize_scale), dpi=dpi)
+        fig = plt.figure(figsize=(7.5, 4.0), dpi=dpi)
         plt.plot(t, coeff_mse, linewidth=2.0, label="MSE")
         plt.grid(True, alpha=0.3)
         plt.xlabel("time index")
@@ -1084,7 +1038,7 @@ def plot_metrics_curves_from_artifacts(
 
     t2 = np.arange(len(field_rel), dtype=int)
     if field_rel.size:
-        fig = plt.figure(figsize=(7.5 * figsize_scale, 4.0 * figsize_scale), dpi=dpi)
+        fig = plt.figure(figsize=(7.5, 4.0), dpi=dpi)
         plt.plot(t2, field_rel, linewidth=2.0, label="relative L2")
         plt.grid(True, alpha=0.3)
         plt.xlabel("time index")
@@ -1095,7 +1049,7 @@ def plot_metrics_curves_from_artifacts(
 
     t3 = np.arange(len(energy_true), dtype=int)
     if energy_true.size and energy_pred.size and energy_true.shape == energy_pred.shape:
-        fig = plt.figure(figsize=(7.5 * figsize_scale, 4.0 * figsize_scale), dpi=dpi)
+        fig = plt.figure(figsize=(7.5, 4.0), dpi=dpi)
         plt.plot(t3, energy_true, linewidth=2.0, label="true")
         plt.plot(t3, energy_pred, linewidth=2.0, linestyle="--", label="pred")
         plt.grid(True, alpha=0.3)
@@ -1105,7 +1059,7 @@ def plot_metrics_curves_from_artifacts(
         plt.legend()
         _savefig(fig, out_dir / "metrics_energy_true_vs_pred.png", dpi=dpi)
 
-        fig = plt.figure(figsize=(7.5 * figsize_scale, 4.0 * figsize_scale), dpi=dpi)
+        fig = plt.figure(figsize=(7.5, 4.0), dpi=dpi)
         plt.plot(t3, energy_pred - energy_true, linewidth=2.0, label=r"$\hat E - E$")
         plt.grid(True, alpha=0.3)
         plt.xlabel("time index")
@@ -1119,7 +1073,6 @@ def plot_mse_comparison_with_paper(
     out_dir: Path,
     dpi: int,
     equation: str,
-    compact: bool = False,
 ) -> None:
     """
     Plot coefficient MSE vs. time and compare with data from Arora et al. 2023.
@@ -1129,8 +1082,6 @@ def plot_mse_comparison_with_paper(
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     rundir : Path
         Run directory containing metrics/curves.json.
     out_dir : Path
@@ -1228,8 +1179,7 @@ def plot_mse_comparison_with_paper(
         "ML-Galerkin (paper)": {"color": "red", "linestyle": "dashdot", "marker": "x", "markersize": 6},
     }
 
-    figsize_scale = 0.5 if compact else 1.0
-    fig, ax = plt.subplots(figsize=(8 * figsize_scale, 6 * figsize_scale), dpi=dpi)
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=dpi)
 
     for name, (t_paper, mse_paper) in paper_data[equation].items():
         ax.plot(t_paper, mse_paper, label=name, **styles[name], markevery=1)
@@ -1258,7 +1208,6 @@ def plot_field_rel_l2_comparison_with_dynabench(
     dpi: int,
     equation: str,
     timesteps: int,
-    compact: bool = False,
 ) -> None:
     """
     Plot relative L2 field error vs. time and compare with data from dynabench models.
@@ -1268,8 +1217,6 @@ def plot_field_rel_l2_comparison_with_dynabench(
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     rundir : Path
         Run directory containing metrics/curves.json.
     out_dir : Path
@@ -1323,8 +1270,7 @@ def plot_field_rel_l2_comparison_with_dynabench(
         error_data -= error_data[0]
         dynabench_data["burgers"][model_name] = np.abs(error_data)
 
-    figsize_scale = 0.5 if compact else 1.0
-    fig, ax = plt.subplots(figsize=(8 * figsize_scale, 6 * figsize_scale), dpi=dpi)
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=dpi)
 
     # Plot data for other models
     if equation in dynabench_data:
@@ -1346,11 +1292,7 @@ def plot_field_rel_l2_comparison_with_dynabench(
 
 def _render_3d_surface_frame_wrapper(args: tuple) -> None:
     """Helper to unpack arguments for multiprocessing.Pool.map."""
-    # The last argument is the rc_params dict
-    rc_params = args[-1]
-    plot_args = args[:-1]
-    with plt.rc_context(rc_params):
-        _render_3d_surface_frame(*plot_args)
+    return _render_3d_surface_frame(*args)
 
 
 def _render_3d_surface_frame(
@@ -1472,7 +1414,6 @@ def animate_3d_surface(
     dpi: int = 100,
     interp_factor: int = 3,
     plot_cfg: Optional[PlotConfig] = None,
-    compact: bool = False,
 ) -> None:
     """
     Animate a 3D surface plot of fields, with behavior depending on the equation.
@@ -1482,8 +1423,6 @@ def animate_3d_surface(
 
     Parameters
     ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     q_left : np.ndarray
         Left (or only) trajectory of shape (T, C, ny, nx).
     q_right : np.ndarray, optional
@@ -1512,7 +1451,6 @@ def animate_3d_surface(
         use_parallel = getattr(plot_cfg, "movie_3d_parallel", False)
 
     # --- Data preparation based on equation ---
-    z_right: Optional[np.ndarray] = None
     color_data_true: Optional[np.ndarray] = None
     color_data_right: Optional[np.ndarray] = None
     if equation == "burgers":
@@ -1576,8 +1514,7 @@ def animate_3d_surface(
     xx_fine, yy_fine = np.meshgrid(x_fine, y_fine)
 
     # --- Plotting setup ---
-    figsize_scale = 0.5 if compact else 1.0
-    figsize = (16 * figsize_scale, 7 * figsize_scale) if is_dual_plot else (8 * figsize_scale, 7 * figsize_scale)
+    figsize = (16, 7) if is_dual_plot else (8, 7)
     fig = plt.figure(figsize=figsize, dpi=dpi)
     if is_dual_plot:
         ax_left = fig.add_subplot(1, 2, 1, projection='3d')
@@ -1634,7 +1571,8 @@ def animate_3d_surface(
     if use_parallel and plot_cfg is not None:
         n_procs = plot_cfg.movie_3d_parallel_procs
         if n_procs is None:
-            n_procs = max(1, multiprocessing.cpu_count() // 2)
+            n_procs = multiprocessing.cpu_count() // 2
+            if n_procs == 0: n_procs = 1 # Ensure at least one process
         print(f"Generating {T} frames for 3D movie in parallel using {n_procs} processes...")
 
         # Use 'spawn' context for multiprocessing to avoid fork-safety issues with
@@ -1642,8 +1580,6 @@ def animate_3d_surface(
         # process, which is safer but slightly slower to start than the default
         # 'fork' method. This is the default on Windows and macOS for this reason.
         mp_context = multiprocessing.get_context("spawn")
-
-        rc_params_for_worker = getattr(plot_cfg, 'compact_rc_params', {}) if compact else {}
 
         with tempfile.TemporaryDirectory() as temp_dir:
             frame_dir = Path(temp_dir)
@@ -1668,7 +1604,6 @@ def animate_3d_surface(
                     cmap_obj if color_mode == "colormap" else None,
                     color_norm if color_mode == "colormap" else None,
                     light,
-                    rc_params_for_worker,
                 )
                 tasks.append(task_args)
 
@@ -1825,11 +1760,7 @@ def animate_3d_surface(
 
 def _render_3d_decomposition_frame_wrapper(args: tuple) -> None:
     """Helper to unpack arguments for multiprocessing.Pool.map."""
-    # The last argument is the rc_params dict
-    rc_params = args[-1]
-    plot_args = args[:-1]
-    with plt.rc_context(rc_params):
-        _render_3d_decomposition_frame(*plot_args)
+    _render_3d_decomposition_frame(*args)
 
 
 def _render_3d_decomposition_frame( # type: ignore
@@ -1874,7 +1805,6 @@ def _render_3d_decomposition_frame( # type: ignore
     dpi: int,
     z_contrib_lims: List[Tuple[float, float]],
     show_titles: bool,
-    compact: bool,
 ):
     """Renders a single frame of the 3D decomposition animation."""
     # This function is self-contained to be picklable for multiprocessing.
@@ -1915,9 +1845,8 @@ def _render_3d_decomposition_frame( # type: ignore
 
     # --- Figure Layout ---
     n_plot_rows = n_modes_to_plot
-    figsize_scale = 0.5 if compact else 1.0
-    fig_width = (28 if has_mean else 22) * figsize_scale
-    fig_height = (4 * n_plot_rows) * figsize_scale
+    fig_width = 28 if has_mean else 22
+    fig_height = 4 * n_plot_rows
     fig = plt.figure(figsize=(fig_width, max(fig_height, 7)), dpi=dpi)
     # Adjust margins to use more of the figure area
     fig.subplots_adjust(left=0.02, right=0.99, bottom=0.05, top=0.93)
@@ -1944,7 +1873,7 @@ def _render_3d_decomposition_frame( # type: ignore
         main_col, approx_col = 0, 1
         contrib_col, eq_col, topos_col, mul_col, chronos_col = 2, 3, 4, 5, 6
 
-    fig.suptitle(f"Decomposition at Time Step {frame}")
+    fig.suptitle(f"Decomposition at Time Step {frame}", fontsize=16)
 
     # --- Main Plot ---
     ax_main = fig.add_subplot(gs[0:n_plot_rows, main_col], projection='3d')
@@ -1958,20 +1887,20 @@ def _render_3d_decomposition_frame( # type: ignore
 
     # '≈' symbol in its own axes for robust alignment
     ax_approx = fig.add_subplot(gs[0:n_plot_rows, approx_col])
-    ax_approx.text(0.5, 0.5, '≈', ha='center', va='center', fontsize=60 * figsize_scale, color='gray', transform=ax_approx.transAxes)
+    ax_approx.text(0.5, 0.5, '≈', ha='center', va='center', fontsize=60, color='gray', transform=ax_approx.transAxes)
     ax_approx.axis('off')
 
     # --- Mean Topos Plot (if exists) ---
     if has_mean:
         ax_mean = fig.add_subplot(gs[0:n_plot_rows, mean_col], projection='3d')
         _, _, z_lbl, c_mode, c_map = _get_z_and_color_data(q_mean_field, equation)
-        _plot_surface_on_ax(ax_mean, z_mean, q_mean_field, color_mean, z_main_min, z_main_max, c_mode, c_map, interp_k=2) # type: ignore
+        _plot_surface_on_ax(ax_mean, z_mean, q_mean_field, color_mean, z_main_min, z_main_max, c_mode, c_map, interp_k=2)
         if show_titles:
-            ax_mean.set_title("Mean Topos")
+            ax_mean.set_title("Mean Topos", fontsize=10)
         ax_mean.set_zlabel(z_lbl, labelpad=-8)
 
         ax_plus_mean = fig.add_subplot(gs[0:n_plot_rows, plus_col])
-        ax_plus_mean.text(0.5, 0.5, '+', ha='center', va='center', fontsize=24 * figsize_scale, transform=ax_plus_mean.transAxes)
+        ax_plus_mean.text(0.5, 0.5, '+', ha='center', va='center', fontsize=24, transform=ax_plus_mean.transAxes)
         ax_plus_mean.axis('off')
 
     # --- Mode Plots ---
@@ -1986,14 +1915,14 @@ def _render_3d_decomposition_frame( # type: ignore
         z_min_c, z_max_c = z_contrib_lims[i]
         _plot_surface_on_ax(ax_contrib, z_contrib_frames[i], q_contrib_frames[i], color_contrib_frames[i], z_min_c, z_max_c, c_mode, c_map, interp_k=2)
         if show_titles:
-            ax_contrib.set_title(f"Mode {i} Contribution")
+            ax_contrib.set_title(f"Mode {i} Contribution", fontsize=10)
         ax_contrib.set_zlabel(z_lbl, labelpad=-8)
 
         # Static Topos Plot
         ax_t = fig.add_subplot(gs[row_idx, topos_col], projection='3d')
         _plot_surface_on_ax(ax_t, z_topos[i], topos_fields[i], color_topos[i], z_topos[i].min(), z_topos[i].max(), c_mode, c_map, interp_k=2)
         if show_titles:
-            ax_t.set_title(f"Topos (Mode {i})")
+            ax_t.set_title(f"Topos (Mode {i})", fontsize=10)
         ax_t.set_zlabel(z_lbl, labelpad=-8)
 
         # Chronos Plot
@@ -2001,29 +1930,29 @@ def _render_3d_decomposition_frame( # type: ignore
         ax_c.plot(np.arange(T), A_true[:, i], color=f"C{i}")
         ax_c.plot([frame], [A_true[frame, i]], 'o', color='red', markersize=8)
         if show_titles:
-            ax_c.set_title(f"Chronos (Mode {i})")
-        ax_c.set_xlabel("Time Step"); ax_c.set_ylabel("Amplitude")
-        ax_c.grid(True, alpha=0.3); ax_c.tick_params(axis='both', which='major')
+            ax_c.set_title(f"Chronos (Mode {i})", fontsize=10)
+        ax_c.set_xlabel("Time Step", fontsize=8); ax_c.set_ylabel("Amplitude", fontsize=8)
+        ax_c.grid(True, alpha=0.3); ax_c.tick_params(axis='both', which='major', labelsize=8)
 
         # Add '+' symbol between rows, centered on the plot column
         pos_contrib = ax_contrib.get_position()
         if row_idx > 0: # Add '+' between rows
-            fig.text(pos_contrib.x0 + pos_contrib.width / 2, pos_contrib.y1 + 0.02, '+', ha='center', va='center', fontsize=24 * figsize_scale)
+            fig.text(pos_contrib.x0 + pos_contrib.width / 2, pos_contrib.y1 + 0.02, '+', ha='center', va='center', fontsize=24)
 
         # Add text symbols for this row using dedicated axes for alignment
         ax_eq = fig.add_subplot(gs[row_idx, eq_col])
-        ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=24 * figsize_scale, transform=ax_eq.transAxes)
+        ax_eq.text(0.5, 0.5, '=', ha='center', va='center', fontsize=24, transform=ax_eq.transAxes)
         ax_eq.axis('off')
 
         ax_mul = fig.add_subplot(gs[row_idx, mul_col])
-        ax_mul.text(0.5, 0.5, '×', ha='center', va='center', fontsize=24 * figsize_scale, transform=ax_mul.transAxes)
+        ax_mul.text(0.5, 0.5, '×', ha='center', va='center', fontsize=24, transform=ax_mul.transAxes)
         ax_mul.axis('off')
 
     if r > n_modes_to_plot:
         ax_placeholder = fig.add_subplot(gs[n_plot_rows, contrib_col]); ax_placeholder.axis('off')
         pos = ax_placeholder.get_position()
         # Center the '...' horizontally
-        fig.text(pos.x0 + pos.width / 2, pos.y0 + pos.height, '+  more modes', ha='center', va='center', fontsize=20 * figsize_scale)
+        fig.text(pos.x0 + pos.width / 2, pos.y0 + pos.height, '+  more modes', ha='center', va='center', fontsize=20)
 
     fig.savefig(output_path)
     plt.close(fig)
@@ -2040,7 +1969,6 @@ def animate_3d_decomposition(
     interp_factor: int = 2,
     plot_cfg: Optional[PlotConfig] = None,
     is_centered: bool = False,
-    compact: bool = False,
 ) -> None:
     """
     Animate the decomposition of the true field into its dominant POD modes.
@@ -2049,11 +1977,6 @@ def animate_3d_decomposition(
     - Left: Large 3D surface plot of the true field, evolving in time.
     - Right: Vertical stack showing the top 3 mode contributions.
       Each row consists of: Mode # = [Static 3D Topos] x [Chronos line plot with moving dot]
-
-    Parameters
-    ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     """
     q_true = rollout.fields_true
     A_true = rollout.A_true
@@ -2125,7 +2048,6 @@ def animate_3d_decomposition(
     if plot_cfg is not None:
         use_parallel = getattr(plot_cfg, "movie_3d_parallel", False)
 
-    figsize_scale = 0.5 if compact else 1.0
     # Pass down the title toggle
     show_titles = getattr(plot_cfg, "movie_3d_decomposition_show_titles", True)
 
@@ -2135,8 +2057,6 @@ def animate_3d_decomposition(
         movie_every = plot_cfg.movie_every
         frame_indices = range(0, T, movie_every)
         n_frames = len(frame_indices)
-
-        rc_params_for_worker = getattr(plot_cfg, 'compact_rc_params', {}) if compact else {}
 
         print(f"Generating {n_frames} frames for 3D decomposition movie in parallel using {n_procs} processes...")
         mp_context = multiprocessing.get_context("spawn")
@@ -2149,7 +2069,7 @@ def animate_3d_decomposition(
                     frame,
                     q_true[frame], # For HSV color
                     z_true[frame],
-                    color_data_true[frame] if color_data_true is not None else None, # type: ignore
+                    color_data_true[frame] if color_data_true is not None else None,
                     frame_dir / f"frame_{frame:05d}.png",
                     T, n_modes_to_plot, r, nx, ny, main_z_label, main_color_mode, main_cmap, equation,
                     has_mean, q_mean_field, z_mean, color_mean,
@@ -2158,13 +2078,11 @@ def animate_3d_decomposition(
                     color_topos,
                     [qc[frame] for qc in q_contrib],
                     [zc[frame] for zc in z_contrib],
-                    [cc[frame] if cc is not None else None for cc in color_contrib], # type: ignore
+                    [cc[frame] if cc is not None else None for cc in color_contrib],
                     A_true, z_global_min, z_global_max,
                     x, y, x_fine, y_fine, xx_fine, yy_fine, light, dpi,
                     z_contrib_lims,
                     show_titles,
-                    compact,
-                    rc_params_for_worker,
                 )
                 tasks.append(task_args)
 
@@ -2204,11 +2122,7 @@ def animate_3d_decomposition(
 
 def _render_3d_reconstruction_frame_wrapper(args: tuple) -> None:
     """Helper to unpack arguments for multiprocessing.Pool.map."""
-    # The last argument is the rc_params dict
-    rc_params = args[-1]
-    plot_args = args[:-1]
-    with plt.rc_context(rc_params):
-        _render_3d_reconstruction_frame(*plot_args)
+    return _render_3d_reconstruction_frame(*args)
 
 
 def _render_3d_reconstruction_frame(
@@ -2225,7 +2139,6 @@ def _render_3d_reconstruction_frame(
     plot_props_true: tuple,
     plot_props_recon: tuple,
     plot_props_error: tuple,
-    compact: bool,
 ):
     """Renders a single 3-panel frame of the 3D reconstruction comparison animation."""
 
@@ -2262,10 +2175,9 @@ def _render_3d_reconstruction_frame(
         ax.tick_params(axis='x', pad=-5); ax.tick_params(axis='y', pad=-5); ax.tick_params(axis='z', pad=-3)
 
     # --- Figure Layout ---
-    figsize_scale = 0.5 if compact else 1.0
-    fig = plt.figure(figsize=(21 * figsize_scale, 7 * figsize_scale), dpi=dpi)
+    fig = plt.figure(figsize=(21, 7), dpi=dpi)
     gs = gridspec.GridSpec(1, 3, wspace=0.1, hspace=0.1)
-    fig.suptitle(f"Time Step {frame}")
+    fig.suptitle(f"Time Step {frame}", fontsize=16)
 
     z_lbl_true, c_mode_true, c_map_true = plot_props_true
     z_lbl_recon, c_mode_recon, c_map_recon = plot_props_recon
@@ -2310,7 +2222,6 @@ def animate_3d_reconstruction_comparison(
     interp_factor: int = 2,
     plot_cfg: Optional[PlotConfig] = None,
     is_centered: bool = False,
-    compact: bool = False,
 ) -> None:
     """
     Animate a 3-panel comparison: True vs. Reconstruction vs. Error.
@@ -2322,11 +2233,6 @@ def animate_3d_reconstruction_comparison(
     The "Reconstruction" panel shows the SINDy prediction, reconstructed
     using a subset of `n` POD modes.
     The "Error" panel shows the difference between the two.
-
-    Parameters
-    ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     """
     use_parallel = plot_cfg and getattr(plot_cfg, "movie_3d_parallel", False)
     if not use_parallel:
@@ -2351,8 +2257,7 @@ def animate_3d_reconstruction_comparison(
 
     # --- Loop over number of modes `n` to generate one movie per `n` ---
     for n in range(r + 1):
-        compact_str = " (compact)" if compact else ""
-        print(f"Generating 3D reconstruction comparison movie for n={n}/{r} modes{compact_str}...")
+        print(f"Generating 3D reconstruction comparison movie for n={n}/{r} modes...")
         output_path = output_dir / f"reconstruction_comparison_n{n:02d}.mp4"
 
         mode_indices = list(range(n))
@@ -2374,8 +2279,6 @@ def animate_3d_reconstruction_comparison(
             z_max = z_min + 1.0
 
         with tempfile.TemporaryDirectory() as temp_dir:
-            rc_params_for_worker = getattr(plot_cfg, 'compact_rc_params', {}) if compact else {}
-
             frame_dir = Path(temp_dir)
             tasks = []
             for frame in range(T):
@@ -2389,8 +2292,6 @@ def animate_3d_reconstruction_comparison(
                     (z_lbl_true, c_mode_true, c_map_true),
                     (z_lbl_recon, c_mode_recon, c_map_recon),
                     (z_lbl_error, c_mode_error, c_map_error),
-                    compact,
-                    rc_params_for_worker,
                 ))
 
             with mp_context.Pool(processes=n_procs) as pool, tqdm(total=T, desc=f"Rendering frames (n={n})") as pbar:
@@ -2416,17 +2317,12 @@ def animate_chronos_comparison(
     output_path: Path,
     fps: int,
     dpi: int,
-    compact: bool = False,
 ) -> None:
     """
     Animate the comparison of true vs. predicted chronos for the top modes.
 
     Layout:
     - Vertical stack of line graphs for the top 3 modes.
-    Parameters
-    ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     - Each graph shows true (solid) and predicted (dashed) coefficient evolution.
     - A vertical line sweeps through to indicate the current time.
     - A visual representation of "+ more modes" is shown below.
@@ -2457,9 +2353,8 @@ def animate_chronos_comparison(
         return
 
     # Setup figure and GridSpec
-    figsize_scale = 0.5 if compact else 1.0
     # n rows for plots, 1 for text, 1 for bar
-    fig = plt.figure(figsize=(8 * figsize_scale, (2.5 * n_modes_to_plot + 1.5) * figsize_scale), dpi=dpi)
+    fig = plt.figure(figsize=(8, 2.5 * n_modes_to_plot + 1.5), dpi=dpi)
     gs = gridspec.GridSpec(n_modes_to_plot + 2, 1, height_ratios=[4] * n_modes_to_plot + [1, 1])
 
     axes = [fig.add_subplot(gs[i, 0]) for i in range(n_modes_to_plot)]
@@ -2488,7 +2383,7 @@ def animate_chronos_comparison(
     axes[-1].set_xlabel("Time Step")
 
     if r > n_modes_to_plot:
-        ax_text.text(0.5, 0.5, "+ more modes", ha='center', va='center', fontsize=14 * figsize_scale, style='italic', color='gray')
+        ax_text.text(0.5, 0.5, "+ more modes", ha='center', va='center', fontsize=14, style='italic', color='gray')
     ax_text.axis('off')
 
     ax_bar.axhline(y=0.5, xmin=0.1, xmax=0.9, color='black', linewidth=5)
@@ -2517,11 +2412,7 @@ def animate_chronos_comparison(
 
 def _render_3d_surface_with_state_matrix_frame_wrapper(args: tuple) -> None:
     """Helper to unpack arguments for multiprocessing.Pool.map."""
-    # The last argument is the rc_params dict
-    rc_params = args[-1]
-    plot_args = args[:-1]
-    with plt.rc_context(rc_params):
-        _render_3d_surface_with_state_matrix_frame(*plot_args)
+    return _render_3d_surface_with_state_matrix_frame(*args)
 
 
 def _render_3d_surface_with_state_matrix_frame(
@@ -2548,7 +2439,6 @@ def _render_3d_surface_with_state_matrix_frame(
     cmap_obj: Optional[Any],
     color_norm: Optional[Normalize],
     light: LightSource,
-    compact: bool,
 ) -> None:
     """Renders a single frame of the 3D surface with state matrix animation."""
     fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -2607,11 +2497,7 @@ def _render_3d_surface_with_state_matrix_frame(
 
 def _render_3d_surface_clean_frame_wrapper(args: tuple) -> None:
     """Helper to unpack arguments for multiprocessing.Pool.map."""
-    # The last argument is the rc_params dict
-    rc_params = args[-1]
-    plot_args = args[:-1]
-    with plt.rc_context(rc_params):
-        _render_3d_surface_clean_frame(*plot_args)
+    return _render_3d_surface_clean_frame(*args)
 
 
 def _render_3d_surface_clean_frame(
@@ -2636,7 +2522,6 @@ def _render_3d_surface_clean_frame(
     cmap_obj: Optional[Any],
     color_norm: Optional[Normalize],
     light: LightSource,
-    compact: bool,
 ) -> None:
     """Renders a single frame of the clean 3D surface animation and saves it to a file."""
     fig = plt.figure(figsize=figsize, dpi=dpi)
@@ -2689,7 +2574,6 @@ def animate_3d_surface_clean(
     dpi: int = 100,
     interp_factor: int = 3,
     plot_cfg: Optional[PlotConfig] = None,
-    compact: bool = False,
 ) -> None:
     """
     Animate a 'clean' 3D surface plot of a field, with no axes, titles, or grid.
@@ -2697,10 +2581,6 @@ def animate_3d_surface_clean(
     This is a variant of `animate_3d_surface` that produces a minimalist visualization
     of the evolving surface, suitable for presentations or embedding.
     """
-    if compact:
-        print("Skipping compact version of clean 3D surface movie (already minimalist).")
-        return
-
     T, C, ny, nx = q.shape
 
     use_parallel = plot_cfg and getattr(plot_cfg, "movie_3d_parallel", False)
@@ -2740,10 +2620,8 @@ def animate_3d_surface_clean(
     mp_context = multiprocessing.get_context("spawn")
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        rc_params_for_worker = getattr(plot_cfg, 'compact_rc_params', {}) if compact else {}
-
         frame_dir = Path(temp_dir)
-        tasks = [(frame, q[frame], z[frame], color_data[frame] if color_data is not None else None, frame_dir / f"frame_{frame:05d}.png", figsize, dpi, x, y, x_fine, y_fine, xx_fine, yy_fine, z_min, z_max, color_mode, cmap_obj, color_norm, light, compact, rc_params_for_worker) for frame in range(T)]
+        tasks = [(frame, q[frame], z[frame], color_data[frame] if color_data is not None else None, frame_dir / f"frame_{frame:05d}.png", figsize, dpi, x, y, x_fine, y_fine, xx_fine, yy_fine, z_min, z_max, color_mode, cmap_obj, color_norm, light) for frame in range(T)]
 
         with mp_context.Pool(processes=n_procs) as pool, tqdm(total=T, desc="Rendering clean 3D frames") as pbar:
             for _ in pool.imap_unordered(_render_3d_surface_clean_frame_wrapper, tasks):
@@ -2809,29 +2687,49 @@ def _reconstruct_fields_from_modes(
     return fields
 
 
-def _generate_plots_for_mode(
+def generate_all_plots_and_movies(
     cfg: PlotConfig,
     rundir: Path,
     layout: SnapshotLayout,
     pod: PODResult,
-    X_centered: np.ndarray,
+    X: np.ndarray,
     sindy: SINDyFitResult,
     rollout: RolloutResult,
     equation: str,
-    fig_dir: Path,
-    mov_dir: Path,
     mean_state: Optional[np.ndarray] = None,
     is_centered: bool = False,
 ) -> None:
     """
-    Internal helper to generate all plots and movies for a given mode (normal or compact).
+    Generate all configured plots and movies for a completed run.
 
     Parameters
     ----------
-    (All parameters from generate_all_plots_and_movies)
+    cfg : PlotConfig
+        Plot configuration.
+    rundir : Path
+        Run output directory.
+    equation : str
+        Name of the equation.
+    layout : SnapshotLayout
+        Snapshot layout for reshaping basis modes.
+    X : np.ndarray
+        The original (potentially centered) snapshot matrix.
+    pod : PODResult
+        POD results.
+    sindy : SINDyFitResult
+        SINDy results.
+    rollout : RolloutResult
+        Rollout results.
+    mean_state : np.ndarray, optional
+        Mean state vector, if centering was used.
+    is_centered : bool
+        Whether centering was used.
     """
-    compact_mode = "compact" in str(fig_dir)
+    if not cfg.enabled:
+        return
 
+    fig_dir = rundir / cfg.figures_subdir
+    mov_dir = rundir / cfg.movies_subdir
     fig_dir.mkdir(parents=True, exist_ok=True)
     mov_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2841,18 +2739,18 @@ def _generate_plots_for_mode(
     plot_pod_energy_scatterplot(pod=pod, out_dir=fig_dir, dpi=cfg.dpi, equation=equation)
 
     if getattr(cfg, "pod_decomposition_matrix", False):
-        plot_pod_decomposition_matrix(pod=pod, out_dir=fig_dir, dpi=cfg.dpi, compact=compact_mode)
+        plot_pod_decomposition_matrix(pod=pod, out_dir=fig_dir, dpi=cfg.dpi)
     
     if getattr(cfg, "pod_decomposition_matrix_square_pixels", False):
-        plot_pod_decomposition_matrix_square_pixels(pod=pod, out_dir=fig_dir, dpi=cfg.dpi, compact=compact_mode)
+        plot_pod_decomposition_matrix_square_pixels(pod=pod, out_dir=fig_dir, dpi=cfg.dpi)
 
     if getattr(cfg, "plot_true_state_matrix", False):
         # If data was centered for POD, X is the centered matrix.
         # We add the mean back to plot the full, uncentered data.
-        X_to_plot = X_centered.copy()
+        X_to_plot = X.copy()
         if is_centered and mean_state is not None:
             X_to_plot += mean_state[:, None]
-        plot_true_state_matrix(X=X_to_plot, out_dir=fig_dir, dpi=cfg.dpi, compact=compact_mode)
+        plot_true_state_matrix(X=X_to_plot, out_dir=fig_dir, dpi=cfg.dpi)
 
     plot_pod_basis_fields(
         U=pod.U,
@@ -2861,11 +2759,10 @@ def _generate_plots_for_mode(
         n_modes=cfg.basis_n_modes,
         cmap=cfg.basis_cmap,
         dpi=cfg.dpi,
-        compact=compact_mode,
     )
 
     if sindy is not None:
-        plot_sindy_coeff_matrix(sindy=sindy, out_dir=fig_dir, dpi=cfg.dpi, compact=compact_mode)
+        plot_sindy_coeff_matrix(sindy=sindy, out_dir=fig_dir, dpi=cfg.dpi)
 
     if cfg.coeff_time_series:
         plot_coeff_time_series(
@@ -2875,7 +2772,6 @@ def _generate_plots_for_mode(
             dpi=cfg.dpi,
             sympy_labels=cfg.sympy_labels,
             sympy_style=cfg.sympy_label_style,
-            compact=compact_mode,
         )
 
     if getattr(cfg, "true_chronos_line_chart", False):
@@ -2883,7 +2779,6 @@ def _generate_plots_for_mode(
             A_true=rollout.A_true,
             out_dir=fig_dir,
             dpi=cfg.dpi,
-            compact=compact_mode,
         )
 
     if cfg.coeff_pair_phase:
@@ -2895,7 +2790,6 @@ def _generate_plots_for_mode(
             max_pairs=cfg.coeff_pair_max_pairs,
             sympy_labels=cfg.sympy_labels,
             sympy_style=cfg.sympy_label_style,
-            compact=compact_mode,
         )
 
     comps = cfg.movie_components
@@ -2907,7 +2801,6 @@ def _generate_plots_for_mode(
             cmap=cfg.rollout_cmap,
             dpi=cfg.dpi,
             components=comps,
-            compact=compact_mode,
         )
 
         save_rollout_movies(
@@ -2918,7 +2811,6 @@ def _generate_plots_for_mode(
             cmap=cfg.rollout_cmap,
             dpi=cfg.dpi,
             components=comps,
-            compact=compact_mode,
         )
 
     if getattr(cfg, "metrics_curves", True):
@@ -2926,14 +2818,12 @@ def _generate_plots_for_mode(
             rundir=rundir,
             out_dir=fig_dir,
             dpi=cfg.dpi,
-            compact=compact_mode,
         )
         plot_mse_comparison_with_paper(
             rundir=rundir,
             out_dir=fig_dir,
             dpi=cfg.dpi,
             equation=equation,
-            compact=compact_mode,
         )
         plot_field_rel_l2_comparison_with_dynabench(
             rundir=rundir,
@@ -2941,7 +2831,6 @@ def _generate_plots_for_mode(
             dpi=cfg.dpi,
             equation=equation,
             timesteps=cfg.dynabench_comparison_timesteps,
-            compact=compact_mode,
         )
 
     if getattr(cfg, "movie_3d_surface", False):
@@ -2957,7 +2846,6 @@ def _generate_plots_for_mode(
             dpi=cfg.dpi,
             interp_factor=interp_factor,
             plot_cfg=cfg,
-            compact=compact_mode,
         )
 
         # Movie of the error field
@@ -2973,7 +2861,6 @@ def _generate_plots_for_mode(
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
                 plot_cfg=cfg,
-                compact=compact_mode,
             )
 
     if getattr(cfg, "movie_3d_decomposition", False):
@@ -2991,7 +2878,6 @@ def _generate_plots_for_mode(
             interp_factor=interp_factor,
             plot_cfg=cfg,
             is_centered=is_centered,
-            compact=compact_mode,
         )
 
     if getattr(cfg, "movie_3d_reconstruction_comparison", False) and rollout.A_pred is not None:
@@ -3011,7 +2897,6 @@ def _generate_plots_for_mode(
             interp_factor=interp_factor,
             plot_cfg=cfg,
             is_centered=is_centered,
-            compact=compact_mode,
         )
 
     if getattr(cfg, "movie_3d_surface_with_state_matrix", False):
@@ -3035,7 +2920,6 @@ def _generate_plots_for_mode(
             dpi=cfg.dpi,
             interp_factor=interp_factor,
             plot_cfg=cfg,
-            compact=compact_mode,
         )
 
     if getattr(cfg, "movie_3d_surface_clean", False):
@@ -3049,7 +2933,6 @@ def _generate_plots_for_mode(
             dpi=cfg.dpi,
             interp_factor=interp_factor,
             plot_cfg=cfg,
-            compact=compact_mode,
         )
 
     if getattr(cfg, "movie_chronos_comparison", False) and rollout.A_pred is not None:
@@ -3060,7 +2943,6 @@ def _generate_plots_for_mode(
             output_path=mov_dir / "chronos_comparison.mp4",
             fps=cfg.movie_fps,
             dpi=cfg.dpi,
-            compact=compact_mode,
         )
 
     if getattr(cfg, "movie_3d_mode_contributions", False):
@@ -3086,7 +2968,6 @@ def _generate_plots_for_mode(
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
                 plot_cfg=cfg,
-                compact=compact_mode,
             )
 
         # Movies for individual mode contributions (True vs Predicted Chronos)
@@ -3126,7 +3007,6 @@ def _generate_plots_for_mode(
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
                 plot_cfg=cfg,
-                compact=compact_mode,
             )
 
         # Movies for cumulative mode contributions
@@ -3176,7 +3056,6 @@ def _generate_plots_for_mode(
                 dpi=cfg.dpi,
                 interp_factor=interp_factor,
                 plot_cfg=cfg,
-                compact=compact_mode,
             )
 
 def animate_3d_surface_with_state_matrix(
@@ -3188,18 +3067,12 @@ def animate_3d_surface_with_state_matrix(
     dpi: int = 100,
     interp_factor: int = 3,
     plot_cfg: Optional[PlotConfig] = None,
-    compact: bool = False,
 ) -> None:
     """
     Animate a 3D surface plot of the true field alongside its state matrix.
 
     Left panel shows the evolving 3D field. Right panel shows the full
     state matrix with a vertical line indicating the current time step.
-
-    Parameters
-    ----------
-    compact : bool
-        If True, generate a compact version of the plot suitable for smaller sizes.
     """
     T, C, ny, nx = q_true.shape
     
@@ -3221,8 +3094,7 @@ def animate_3d_surface_with_state_matrix(
     xx_fine, yy_fine = np.meshgrid(x_fine, y_fine)
 
     # --- Plotting setup ---
-    figsize_scale = 0.5 if compact else 1.0
-    figsize = (16 * figsize_scale, 7 * figsize_scale)
+    figsize = (16, 7)
     light = LightSource(azdeg=225, altdeg=45)
 
     z_min, z_max = z_true.min(), z_true.max()
@@ -3241,11 +3113,9 @@ def animate_3d_surface_with_state_matrix(
     mp_context = multiprocessing.get_context("spawn")
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        rc_params_for_worker = getattr(plot_cfg, 'compact_rc_params', {}) if compact else {}
-
         frame_dir = Path(temp_dir)
         tasks = [
-            (frame, q_true[frame], z_true[frame], color_data_true[frame] if color_data_true is not None else None, X_full, frame_dir / f"frame_{frame:05d}.png", figsize, dpi, x, y, x_fine, y_fine, xx_fine, yy_fine, z_min, z_max, z_label, color_mode, cmap_obj, color_norm, light, compact, rc_params_for_worker) for frame in range(T)
+            (frame, q_true[frame], z_true[frame], color_data_true[frame] if color_data_true is not None else None, X_full, frame_dir / f"frame_{frame:05d}.png", figsize, dpi, x, y, x_fine, y_fine, xx_fine, yy_fine, z_min, z_max, z_label, color_mode, cmap_obj, color_norm, light) for frame in range(T)
         ]
 
         with mp_context.Pool(processes=n_procs) as pool, tqdm(total=T, desc="Rendering frames") as pbar:
@@ -3259,72 +3129,3 @@ def animate_3d_surface_with_state_matrix(
             print(f"Saved 3D surface with state matrix animation to {output_path}")
         except (FileNotFoundError, subprocess.CalledProcessError) as e:
             print(f"ERROR: ffmpeg failed. Is it installed? Details:\n{e}")
-
-
-def generate_all_plots_and_movies(
-    cfg: PlotConfig,
-    rundir: Path,
-    layout: SnapshotLayout,
-    pod: PODResult,
-    X: np.ndarray,
-    sindy: SINDyFitResult,
-    rollout: RolloutResult,
-    equation: str,
-    mean_state: Optional[np.ndarray] = None,
-    is_centered: bool = False,
-) -> None:
-    """
-    Generate all configured plots and movies for a completed run.
-
-    If `cfg.generate_compact` is True, this will also generate a second set of
-    "compact" plots and movies in a separate subdirectory, which are optimized
-    for smaller viewing sizes.
-
-    Parameters
-    ----------
-    cfg : PlotConfig
-        Plot configuration.
-    rundir : Path
-        Run output directory.
-    equation : str
-        Name of the equation.
-    layout : SnapshotLayout
-        Snapshot layout for reshaping basis modes.
-    X : np.ndarray
-        The original (potentially centered) snapshot matrix.
-    pod : PODResult
-        POD results.
-    sindy : SINDyFitResult
-        SINDy results.
-    rollout : RolloutResult
-        Rollout results.
-    mean_state : np.ndarray, optional
-        Mean state vector, if centering was used.
-    is_centered : bool
-        Whether centering was used.
-    """
-    if not cfg.enabled:
-        return
-
-    # --- Normal plots ---
-    fig_dir = rundir / cfg.figures_subdir
-    mov_dir = rundir / cfg.movies_subdir
-    _generate_plots_for_mode(
-        cfg, rundir, layout, pod, X, sindy, rollout, equation, fig_dir, mov_dir,
-        mean_state=mean_state,
-        is_centered=is_centered
-    )
-
-    # --- Compact plots ---
-    if getattr(cfg, 'generate_compact', False):
-        print("\nGenerating compact versions of plots and movies...")
-        fig_dir_compact = rundir / getattr(cfg, 'compact_figures_subdir', 'figures_compact')
-        mov_dir_compact = rundir / getattr(cfg, 'compact_movies_subdir', 'movies_compact')
-        
-        compact_rc = getattr(cfg, 'compact_rc_params', {})
-        with plt.rc_context(compact_rc):
-            _generate_plots_for_mode(
-                cfg, rundir, layout, pod, X, sindy, rollout, equation, fig_dir_compact, mov_dir_compact,
-                mean_state=mean_state,
-                is_centered=is_centered
-            )
