@@ -2,9 +2,9 @@
 name: burgers_rom_local
 seed: 0
 data:
-  equation: burgers
+  equation: kuramotosivashinsky
   structure: grid
-  resolution: high
+  resolution: low
   split: train
   n_trajectories: 1
   trajectory_ids: [1]
@@ -16,7 +16,7 @@ data:
   time_stride: 1
   time_limit: null
 pod:
-  rank: 8
+  rank: 24
   energy_fraction: null
   center: true
 deriv:
@@ -28,9 +28,9 @@ sindy:
   include_bias: false
   # optimizer: sr3
   # optimizer_params:
-  #   threshold: 0.1
-  #   nu: 0.808
-  #   max_iter: 5000
+  #   threshold: 0.01
+  #   nu: 1.0
+  #   max_iter: 100
   #   normalize_columns: true
   # optimizer: stlsq
   # optimizer_params:
@@ -50,7 +50,7 @@ sindy:
   optimizer: trappingsr3
   optimizer_params:
     eta: 100
-    threshold: 0.0500481029
+    threshold: 0.0500541247
     alpha: 100
     beta: 100
     max_iter: 80
@@ -58,18 +58,18 @@ sindy:
     normalize_columns: true
   constrain_energy: false
   parallel: true
-  parallel_procs: 2
+  parallel_procs: 12
 outputs_dir: outputs
 plots:
   enabled: true
   movie_3d_surface: true
   movie_3d_interp_factor: 3
-  movie_3d_mode_contributions: true
+  movie_3d_mode_contributions: false
   movie_3d_parallel: true
   movie_3d_parallel_procs: 12
   movie_3d_decomposition: true
   movie_3d_decomposition_show_titles: false
-  movie_3d_reconstruction_comparison: true
+  movie_3d_reconstruction_comparison: false
   movie_chronos_comparison: true
   movie_3d_surface_with_state_matrix: true
   dynabench_comparison_timesteps: 30

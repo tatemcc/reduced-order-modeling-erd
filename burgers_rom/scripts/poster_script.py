@@ -15,7 +15,7 @@ from scipy.interpolate import RectBivariateSpline
 
 def main():
     # --- DATA PARAMETERS ---
-    run_id = "5b007be0862a"
+    run_id = "b595a0c05622"
     equation = "burgers"
     modes_to_plot = [0, 1, 2]  # 0-indexed modes to plot
     mode_colors = ["#97279A", "#C7507B", "#F49C58"]  # Hex codes for each mode's chronos plot

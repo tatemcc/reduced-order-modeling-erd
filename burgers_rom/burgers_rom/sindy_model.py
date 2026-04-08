@@ -110,6 +110,12 @@ def build_optimizer(
 
     optimizer_params = {} if params is None else params
     if optimizer_name == "stlsq":
+        if parallel:
+            print(
+                f"Warning: The '{optimizer_name}' optimizer in PySINDy does not support "
+                "multi-core parallelization (n_jobs). "
+                "Fitting sequentially."
+            )
         threshold = params.get("threshold", 0.1)
         alpha = params.get("alpha", 0.05)
         return ps.STLSQ(
@@ -117,9 +123,14 @@ def build_optimizer(
             alpha=alpha,
             max_iter=max_iter,
             normalize_columns=normalize_columns,
-            n_jobs=n_jobs,
         )
     elif optimizer_name == "sr3":
+        if parallel:
+            print(
+                f"Warning: The '{optimizer_name}' optimizer in PySINDy does not support "
+                "multi-core parallelization (n_jobs). "
+                "Fitting sequentially."
+            )
         threshold = params.get("threshold", 0.1)
         nu = params.get("nu", 1.0)
         # SR3 often needs more iterations
@@ -129,7 +140,6 @@ def build_optimizer(
             regularizer="L0",
             max_iter=max_iter_sr3,
             normalize_columns=normalize_columns,
-            n_jobs=n_jobs,
         )
         optimizer.threshold = threshold
         return optimizer
@@ -228,6 +238,13 @@ def fit_sindy_on_coeffs(
     SINDyFitResult
         Fitted model and metadata.
     """
+    if optimizer_name == "trappingsr3" and poly_order != 2:
+        raise ValueError(
+            "The 'trappingsr3' optimizer is designed for quadratic nonlinearities "
+            "and only supports poly_order=2. Please change poly_order to 2 or "
+            "use a different optimizer (e.g., 'sr3', 'stlsq')."
+        )
+
     A_used = np.asarray(A_used)
     dA_dt = np.asarray(dA_dt)
 
